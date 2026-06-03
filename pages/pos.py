@@ -17,6 +17,58 @@ from database.db import (
     preview_sale_allocations,
 )
 
+BLUE = "#2563eb"
+
+
+def soft_button_style():
+    return """
+        QPushButton {
+            background-color: #f8fafc;
+            color: #111827;
+            border: 1px solid #dbe4ee;
+            border-radius: 8px;
+            padding: 0 14px;
+            font-weight: 700;
+        }
+
+        QPushButton:hover {
+            background-color: #eef5ff;
+        }
+    """
+
+
+def primary_button_style(background_color, hover_color):
+    return f"""
+        QPushButton {{
+            background-color: {background_color};
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 0 14px;
+            font-weight: 700;
+        }}
+
+        QPushButton:hover {{
+            background-color: {hover_color};
+        }}
+    """
+
+
+def run_centered_modal(dialog, parent=None):
+    dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+    dialog.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+    dialog.adjustSize()
+
+    if parent is not None:
+        parent_geometry = parent.frameGeometry()
+        dialog_geometry = dialog.frameGeometry()
+        dialog_geometry.moveCenter(parent_geometry.center())
+        dialog.move(dialog_geometry.topLeft())
+
+    dialog.raise_()
+    dialog.activateWindow()
+    return dialog.exec()
+
 
 
 
@@ -1048,7 +1100,7 @@ class POSPage(QWidget):
             return
 
         dialog = QuantityDialog(product["name"], max_addable, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        if run_centered_modal(dialog, self) != QDialog.DialogCode.Accepted:
             return
 
         quantity_to_add = dialog.get_quantity()
@@ -1110,7 +1162,7 @@ class POSPage(QWidget):
         identity_required = cart_requires_prescription(cart_items)
 
         identity_dialog = CustomerIdentityDialog(details_required=identity_required, parent=self)
-        if identity_dialog.exec() != QDialog.DialogCode.Accepted:
+        if run_centered_modal(identity_dialog, self) != QDialog.DialogCode.Accepted:
             return
 
         identity = identity_dialog.get_payload()
@@ -1152,11 +1204,11 @@ class POSPage(QWidget):
             return
 
         dialog = BatchPickDialog(plan, total_amount, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        if run_centered_modal(dialog, self) != QDialog.DialogCode.Accepted:
             return
 
         payment_dialog = PaymentMethodDialog(total_amount, self)
-        if payment_dialog.exec() != QDialog.DialogCode.Accepted:
+        if run_centered_modal(payment_dialog, self) != QDialog.DialogCode.Accepted:
             return
 
         payment_method = payment_dialog.get_payment_method()
@@ -1173,6 +1225,13 @@ class POSPage(QWidget):
             )
         except ValueError as error:
             QMessageBox.warning(self, "Checkout Failed", str(error))
+            return
+        except Exception as error:
+            QMessageBox.critical(
+                self,
+                "Checkout Failed",
+                f"An unexpected error occurred while saving the sale:\n{error}"
+            )
             return
 
         self.cart.clear()
