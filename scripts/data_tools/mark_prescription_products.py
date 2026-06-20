@@ -1,6 +1,10 @@
-import sqlite3
+﻿import sqlite3
+from pathlib import Path
 
-conn = sqlite3.connect("database/pharmacy.db")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DB_PATH = PROJECT_ROOT / "database" / "pharmacy.db"
+
+conn = sqlite3.connect(DB_PATH)
 cursor = conn.cursor()
 
 products_to_mark = [

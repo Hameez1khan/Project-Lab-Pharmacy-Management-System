@@ -1,5 +1,12 @@
-from db import initialize_database, insert_product, insert_batch, get_connection
+﻿from pathlib import Path
+import sys
 import random
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from database.db import initialize_database, insert_product, insert_batch, get_connection
 
 initialize_database()
 
@@ -87,8 +94,8 @@ def seed_products():
                 manufacturer="Sample Pharma"
             )
             print(f"Inserted product: {product['name']}")
-        except Exception as e:
-            print(f"Skipped product {product['name']}: {e}")
+        except Exception as error:
+            print(f"Skipped product {product['name']}: {error}")
 
 
 def seed_batches():
@@ -97,7 +104,6 @@ def seed_batches():
         if not product_id:
             continue
 
-        # two normal FEFO-test batches for every product
         batch_1 = f"B{index:03d}-A"
         batch_2 = f"B{index:03d}-B"
 
@@ -105,25 +111,24 @@ def seed_batches():
             try:
                 insert_batch(product_id, batch_1, "2026-06-15", 4 + (index % 4))
                 print(f"Inserted batch {batch_1} for {product['name']}")
-            except Exception as e:
-                print(f"Skipped batch {batch_1}: {e}")
+            except Exception as error:
+                print(f"Skipped batch {batch_1}: {error}")
 
         if not batch_exists(batch_2):
             try:
                 insert_batch(product_id, batch_2, "2026-10-20", 6 + (index % 5))
                 print(f"Inserted batch {batch_2} for {product['name']}")
-            except Exception as e:
-                print(f"Skipped batch {batch_2}: {e}")
+            except Exception as error:
+                print(f"Skipped batch {batch_2}: {error}")
 
-        # add a few special cases for dashboard/FEFO testing
         if product["name"] == "Panadol":
             special_batch = "PAN-LOW-001"
             if not batch_exists(special_batch):
                 try:
                     insert_batch(product_id, special_batch, "2026-05-10", 2)
                     print(f"Inserted low-stock FEFO batch for {product['name']}")
-                except Exception as e:
-                    print(f"Skipped special batch {special_batch}: {e}")
+                except Exception as error:
+                    print(f"Skipped special batch {special_batch}: {error}")
 
         if product["name"] == "Loratadine":
             special_batch = "LOR-EXP-001"
@@ -131,8 +136,8 @@ def seed_batches():
                 try:
                     insert_batch(product_id, special_batch, "2026-05-02", 3)
                     print(f"Inserted near-expiry batch for {product['name']}")
-                except Exception as e:
-                    print(f"Skipped special batch {special_batch}: {e}")
+                except Exception as error:
+                    print(f"Skipped special batch {special_batch}: {error}")
 
         if product["name"] == "Vitamin C":
             special_batch = "VTC-OLD-001"
@@ -140,8 +145,8 @@ def seed_batches():
                 try:
                     insert_batch(product_id, special_batch, "2025-01-15", 5)
                     print(f"Inserted expired batch for {product['name']}")
-                except Exception as e:
-                    print(f"Skipped special batch {special_batch}: {e}")
+                except Exception as error:
+                    print(f"Skipped special batch {special_batch}: {error}")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
-import sqlite3
+﻿import sqlite3
+from pathlib import Path
 
-DB_PATH = "database/pharmacy.db"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DB_PATH = PROJECT_ROOT / "database" / "pharmacy.db"
 
 conn = sqlite3.connect(DB_PATH)
 conn.row_factory = sqlite3.Row
