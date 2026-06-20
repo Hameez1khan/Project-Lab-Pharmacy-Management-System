@@ -1,150 +1,168 @@
-﻿# Project Lab - Pharmacy Management System
+﻿# Pharmacy Management System
 
-A desktop pharmacy management application built with **Python**, **PyQt6**, and **SQLite**.
+This is a desktop pharmacy application made for managing daily pharmacy work in one place.
 
-The system is designed for pharmacy administrators and pharmacists to manage products, batches, prescriptions, sales, returns, and audit logs from a single desktop interface.
+It helps administrators and pharmacists handle:
 
-## Features
+- medicines and product details
+- batch stock and expiry dates
+- sales and checkout
+- prescription records
+- returned items
+- audit logs
+- basic dashboard summaries
 
-- Role-based login for **Admin** and **Pharmacist**
-- Product management with category, dosage form, barcode, pricing, and prescription requirement
-- Batch-based inventory management with expiry tracking
-- Point of Sale workflow with quantity selection
-- Prescription tracking with:
-  - customer name
-  - customer SSN
-  - medicine name
-  - quantity
-  - purchase date
-- Sales history with downloadable receipt documents
-- Returned items management with downloadable return reports
-- Audit logs for important user actions
-- Dashboard with:
-  - medicines count
-  - sales count
-  - returned items count
-  - expiration alerts
-  - low stock alerts
-  - revenue summary
+## What This System Can Do
 
-## Tech Stack
+The application includes:
 
-- **Python 3**
-- **PyQt6** for the desktop UI
-- **SQLite** for local data storage
+- separate login access for **Admin** and **Pharmacist**
+- product management with barcode, category, price, and dosage form
+- batch-based stock tracking
+- expiry monitoring
+- checkout and cart handling
+- prescription tracking for medicines that require it
+- sales history and receipt download
+- returned items tracking
+- audit logs for important actions
+- dashboard cards for quick business overview
 
-## Project Structure
+## What You Need Before Running It
 
-```text
-Project-Lab-Pharmacy-Management-System/
-|- assets/                  # Icons and static assets
-|- database/
-|  |- db.py                 # Main database logic
-|  |- pharmacy.db           # SQLite database file
-|  |- seed_data.py          # Optional seed data helper
-|  `- mark_prescription_products.py
-|- pages/
-|  |- dashboard.py
-|  |- batch_management.py
-|  |- pos.py
-|  |- product.py
-|  |- prescriptions.py
-|  |- sales_history.py
-|  |- returned_items.py
-|  |- audit_logs.py
-|  |- settings.py
-|  `- reports.py
-|- login_window.py          # Login screen
-|- main_window.py           # Main application shell
-|- main.py                  # Application entry point
-|- setup_db.py              # Database initialization helper
-`- README.md
-```
+Make sure you have:
 
-## Installation
+- **Python 3.11** installed
+- **PyQt6** installed
 
-1. Open a terminal in the project folder.
+## Setup
 
-2. Create and activate a virtual environment if needed:
+1. Open a terminal inside the project folder.
+2. Create a virtual environment:
 
 ```powershell
-python -m venv .venv
+py -3.11 -m venv .venv
+```
+
+3. Activate it:
+
+```powershell
 .\.venv\Scripts\Activate.ps1
 ```
 
-3. Install dependencies:
+4. Install the required package:
 
 ```powershell
 pip install PyQt6
 ```
 
-If your environment does not already include SQLite support, use a standard Python installation from python.org.
+## How to Start the Program
 
-## Running the Application
-
-Start the app with:
+Run:
 
 ```powershell
 python main.py
 ```
 
-The database is initialized automatically on startup.
+That is the normal way to start the software.
 
-## Default Admin Login
+## First-Time Use
 
-On first run, the system creates a default administrator account:
+When the program starts for the first time:
+
+- the local database is created automatically
+- the required tables are created automatically
+- the default admin account is added automatically if it does not already exist
+
+You do **not** need to run any extra setup script before starting the program.
+
+## Default Admin Account
+
+The program creates a default admin account on first startup:
 
 - **Username:** `admin`
 - **Password:** `1234`
 
-You should change the default password after logging in.
+After logging in, it is a good idea to change the password.
 
-## Main Modules
+## Optional Scripts
 
-### Dashboard
-Overview of key pharmacy metrics, low-stock products, and batches expiring soon.
+There is also a `scripts/` folder in the project.
 
-### Batch Management
-Manage medicine batches, stock quantities, pricing, and expiry dates.
+These scripts are **optional**. They are mainly for testing, maintenance, or preparing sample data.
 
-### Point of Sale
-Sell medicines, manage prescription-required items, and capture customer information when required.
+Most users do **not** need them.
 
-### Products
-Manage the pharmacy catalog, including barcodes, categories, stock thresholds, and prescription flags.
+Normal use only requires:
 
-### Prescriptions
-Track sensitive medicine sales and generate prescription reports.
-
-### Sales History
-Review completed sales, download receipts, and process returns.
-
-### Returned Items
-Track completed returns and download return reports.
-
-### Audit Logs
-Review important actions performed by administrators and pharmacists.
-
-### Settings
-Manage passwords and account-related administrative actions.
-
-## Notes
-
-- This project uses a **local SQLite database** stored at:
-
-```text
-database/pharmacy.db
+```powershell
+python main.py
 ```
 
-- The application is intended for **desktop use**.
-- Most reports are exported as **HTML files** into the user's `Downloads` folder.
+## Project Files
+
+```text
+Project-Lab-Pharmacy-Management-System/
+|- assets/
+|- database/
+|- docs/
+|- pages/
+|- scripts/
+|- login_window.py
+|- main.py
+|- main_window.py
+|- ui_theme.py
+`- README.md
+```
+
+## Documents
+
+The `docs/` folder contains:
+
+- `developer-guide.pdf`
+- `user-manual.pdf`
+- `presentation-slides.pdf`
+
+## Main Parts of the Program
+
+### Dashboard
+Shows a quick summary such as medicine count, sales, returned items, low stock, and expiry alerts.
+
+### Batch Management
+Used for managing medicine batches, stock quantity, and expiry dates.
+
+### Point of Sale
+Used for searching products, adding them to the cart, and completing sales.
+
+### Products
+Used for adding, editing, and viewing medicine records.
+
+### Prescriptions
+Used for viewing medicines that were sold with prescription-related customer information.
+
+### Sales History
+Used for viewing completed sales, downloading receipts, and handling returns.
+
+### Returned Items
+Used for viewing completed returns and refund records.
+
+### Audit Logs
+Used for checking important actions performed by users.
+
+### Settings
+Used for password and account-related management.
+
+## Important Notes
+
+- The program uses a local database stored inside the project.
+- Reports are saved as **HTML files** in the user's **Downloads** folder.
+- This system is designed for desktop use.
 
 ## Future Improvements
 
-Possible next improvements include:
+Possible future updates may include:
 
-- packaged executable build for Windows
-- dependency list in `requirements.txt`
+- easier Windows installation
+- automatic dependency installation
 - automated tests
-- backup/export tools for the SQLite database
-- richer reporting and analytics
+- database backup and restore tools
+- more advanced reports
