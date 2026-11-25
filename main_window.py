@@ -23,6 +23,8 @@ from pages.returned_items import ReturnedItemsPage
 from pages.product import ProductPage
 from pages.prescriptions import PrescriptionsPage
 from pages.audit_logs import AuditLogsPage
+from pages.reports import ReportsPage
+from i18n import T
 from ui_theme import (
     BORDER,
     CANVAS,
@@ -37,6 +39,8 @@ class MainWindow(QWidget):
     def __init__(self, user):
         super().__init__()
 
+        from database.inventory_audit import operator
+        operator.set((user["username"], user["role"]))
         self.current_user = user
         self.current_role = (user.get("role") or "admin").lower()
 
@@ -96,6 +100,8 @@ class MainWindow(QWidget):
         self.stack.addWidget(self.prescriptions_page)
         self.stack.addWidget(self.sales_history_page)
         self.stack.addWidget(self.audit_logs_page)
+        self.reports_page = ReportsPage(current_user=self.current_user)
+        self.stack.addWidget(self.reports_page)
         self.stack.addWidget(self.returned_items_page)
         self.stack.addWidget(self.settings_page)
 
@@ -162,7 +168,7 @@ class MainWindow(QWidget):
             }
         """)
 
-        mode = QLabel(self.role_style["mode_text"])
+        mode = QLabel(T(self.role_style["mode_text"]))
         mode.setStyleSheet(f"""
             QLabel {{
                 color: {self.role_style['accent']};
@@ -189,6 +195,7 @@ class MainWindow(QWidget):
             ("Prescriptions", "", self.show_prescriptions, True),
             ("Sales History", "", self.show_sales_history, True),
             ("Returned Items", "", self.show_returned_items, True),
+            ("Reports", "", self.show_reports, True),
             ("Audit Logs", "", self.show_audit_logs, True),
         ]
 
@@ -227,7 +234,7 @@ class MainWindow(QWidget):
         return sidebar
 
     def create_sidebar_button(self, text, icon="", enabled=True, danger=False):
-        button_text = f"{icon}   {text}" if icon else text
+        button_text = f"{icon}   {T(text)}" if icon else T(text)
 
         button = QPushButton(button_text)
         button.setFixedHeight(40)
@@ -338,7 +345,7 @@ class MainWindow(QWidget):
             }}
         """)
 
-        role_mode_label = QLabel(self.role_style["mode_text"])
+        role_mode_label = QLabel(T(self.role_style["mode_text"]))
         role_mode_label.setStyleSheet(f"""
             QLabel {{
                 color: {self.role_style['accent']};
@@ -402,6 +409,11 @@ class MainWindow(QWidget):
         self.set_active_button("Returned Items")
         self.returned_items_page.refresh_table()
         self.stack.setCurrentWidget(self.returned_items_page)
+
+    def show_reports(self):
+        self.set_active_button("Reports")
+        self.reports_page.refresh()
+        self.stack.setCurrentWidget(self.reports_page)
 
     def show_audit_logs(self):
         self.set_active_button("Audit Logs")

@@ -2,13 +2,25 @@ import sqlite3
 from pathlib import Path
 from datetime import datetime, timedelta
 
-DB_PATH = Path(__file__).resolve().parent / "pharmacy.db"
+import os
+import sys
+
+if getattr(sys, "frozen", False):
+    data_dir = Path(os.environ["LOCALAPPDATA"]) / "KhalisDawa"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    DB_PATH = data_dir / "pharmacy.db"
+else:
+    DB_PATH = Path(__file__).resolve().parent / "pharmacy.db"
 RETURN_WINDOW_DAYS = 3
 
 
-def get_connection():
+from database import inventory_audit
+
+
+def get_connection(reason="Inventory change"):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    inventory_audit.bind(conn, reason)
     return conn
 
 
@@ -26,7 +38,7 @@ def format_receipt_number(record_id):
 
 
 def refresh_expiring_soon_discounts():
-    conn = get_connection()
+    conn = get_connection("Automatic expiry discount review")
     cursor = conn.cursor()
 
     today = datetime.now().strftime("%Y-%m-%d")
@@ -165,23 +177,25 @@ def initialize_database():
         "created_at",
     }
 
-    if set(prescription_columns) != expected_prescription_columns:
-        cursor.execute("DROP TABLE IF EXISTS prescriptions")
-
-        cursor.execute("""
-        CREATE TABLE prescriptions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sale_id INTEGER,
-            customer_ssn TEXT NOT NULL,
-            customer_name TEXT NOT NULL,
-            product_id INTEGER NOT NULL,
-            medicine_name TEXT NOT NULL,
-            amount INTEGER NOT NULL,
-            created_at TEXT,
-            FOREIGN KEY (product_id) REFERENCES products(id),
-            FOREIGN KEY (sale_id) REFERENCES sales(id)
+    missing = expected_prescription_columns - set(prescription_columns)
+    additions = {
+        "sale_id": "INTEGER REFERENCES sales(id)",
+        "created_at": "TEXT",
+    }
+    unknown = missing - additions.keys()
+    if unknown:
+        conn.close()
+        raise RuntimeError(
+            "Prescriptions are missing required fields: "
+            + ", ".join(sorted(unknown))
+            + ". Existing records were preserved. Review the database before continuing."
         )
-        """)
+
+    for column, definition in additions.items():
+        if column in missing:
+            cursor.execute(
+                f"ALTER TABLE prescriptions ADD COLUMN {column} {definition}"
+            )
 
 
 
@@ -288,9 +302,11 @@ def initialize_database():
 
 
 
+    from database.workbook import setup as setup_workbook
+    inventory_audit.install(conn)
+    setup_workbook(conn)
     conn.commit()
     conn.close()
-
 
 def insert_product(name, dosage_form, barcode, price, min_stock=10, category=None, manufacturer=None):
     conn = get_connection()
@@ -447,8 +463,9 @@ def get_audit_log_rows(search_text=""):
             "created_at": row["created_at"] or "",
         })
 
+    rows.extend(inventory_audit.history(conn, search_text.strip()))
     conn.close()
-    return rows
+    return sorted(rows, key=lambda row: row["created_at"], reverse=True)
 
 
 def get_product_by_name(name):
@@ -486,7 +503,7 @@ def get_product_by_barcode(barcode):
 
 
 def insert_batch(product_id, batch_number, expiry_date, quantity):
-    conn = get_connection()
+    conn = get_connection("Stock loaded")
     cursor = conn.cursor()
 
     cursor.execute("SELECT selling_price FROM products WHERE id = ?", (product_id,))
@@ -523,8 +540,19 @@ def insert_batch(product_id, batch_number, expiry_date, quantity):
     return True
 
 
-def add_batch_record(product_name, batch_number, quantity, expiry_date):
-    conn = get_connection()
+def add_batch_record(product_name, batch_number, quantity, expiry_date, purchase_unit_cost):
+    from decimal import Decimal, InvalidOperation
+
+    try:
+        cost = Decimal(str(purchase_unit_cost))
+        if not cost.is_finite() or not 0 < cost <= 999_999_999:
+            raise ValueError
+        if cost != cost.quantize(Decimal("0.01")):
+            raise ValueError
+    except (InvalidOperation, TypeError, ValueError):
+        return False, "Enter a positive purchase cost with at most two decimal places."
+
+    conn = get_connection("Batch received")
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -549,8 +577,8 @@ def add_batch_record(product_name, batch_number, quantity, expiry_date):
         conn.close()
         return False, "Batch number already exists."
 
-    unit_cost = float(product["selling_price"])
-    total_cost = unit_cost * int(quantity)
+    unit_cost = float(cost)
+    total_cost = float(cost * int(quantity))
 
     cursor.execute("""
         INSERT INTO batches (
@@ -576,8 +604,9 @@ def add_batch_record(product_name, batch_number, quantity, expiry_date):
     return True, "Batch added successfully."
 
 
-def update_batch_record(batch_id, quantity, expiry_date, price, min_stock_level):
-    conn = get_connection()
+def update_batch_record(batch_id, quantity, expiry_date, price, min_stock_level,
+    reason="Batch details edited"):
+    conn = get_connection(reason)
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -613,7 +642,7 @@ def update_batch_record(batch_id, quantity, expiry_date, price, min_stock_level)
 
 
 def delete_batch_record(batch_id):
-    conn = get_connection()
+    conn = get_connection("Batch deleted")
     cursor = conn.cursor()
 
     cursor.execute("DELETE FROM batches WHERE id = ?", (batch_id,))
@@ -650,6 +679,7 @@ def get_product_rows(search_text="", category="All Categories"):
             p.dosage_form,
             p.barcode,
             p.selling_price,
+            b.purchase_unit_cost,
             p.min_stock_level,
             p.category,
             p.prescription_required,
@@ -828,7 +858,7 @@ def update_product_record(
 
 
 def delete_product_record(product_id):
-    conn = get_connection()
+    conn = get_connection("Product and its batches deleted")
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -1207,7 +1237,7 @@ def _restore_batch_quantity(cursor, product_id, batch_id, batch_number, expiry_d
 
 
 def process_sale_return(sale_id, return_requests, acting_username=None, acting_role=None):
-    conn = get_connection()
+    conn = get_connection(f"Return against sale #{sale_id}")
     cursor = conn.cursor()
 
     try:
@@ -1398,7 +1428,7 @@ def process_sale_return(sale_id, return_requests, acting_username=None, acting_r
 
 
 def delete_return_record(return_id, acting_username=None, acting_role=None):
-    conn = get_connection()
+    conn = get_connection(f"Reversed return #{return_id}")
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -1505,6 +1535,7 @@ def get_batch_rows(search_text="", category="All Categories"):
             p.name,
             p.category,
             p.selling_price,
+            b.purchase_unit_cost,
             p.min_stock_level,
             b.batch_number,
             b.quantity,
@@ -1528,6 +1559,7 @@ def get_batch_rows(search_text="", category="All Categories"):
             "name": row["name"],
             "category": row["category"] or "General",
             "price": row["selling_price"],
+            "purchase_unit_cost": row["purchase_unit_cost"],
             "min_stock_level": row["min_stock_level"],
             "batch_number": row["batch_number"],
             "stock": row["quantity"],
@@ -1647,9 +1679,44 @@ def create_sale(
     customer_ssn=None,
     customer_name=None
 ):
+    conn = get_connection("POS checkout")
+
+    try:
+        # Reserve the database for this writer before checking stock.
+        conn.execute("BEGIN IMMEDIATE")
+
+        result = _create_sale_locked(
+            conn,
+            cart_items,
+            payment_method,
+            cashier_id,
+            acting_username,
+            acting_role,
+            customer_ssn,
+            customer_name,
+        )
+
+        conn.commit()
+        return result
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _create_sale_locked(
+    conn,
+    cart_items,
+    payment_method,
+    cashier_id=1,
+    acting_username=None,
+    acting_role=None,
+    customer_ssn=None,
+    customer_name=None
+    ):
     plan, total_amount = preview_sale_allocations(cart_items)
 
-    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -1676,7 +1743,6 @@ def create_sale(
 
         if prescription_row and prescription_row["prescription_required"]:
             if not normalized_ssn or not normalized_name:
-                conn.close()
                 raise ValueError("Customer SSN and name are required for prescription medicines.")
 
             cursor.execute("""
@@ -1749,14 +1815,11 @@ def create_sale(
 
 
 
-    conn.commit()
-    conn.close()
-
     return plan, total_amount
 
 
 def delete_sale_record(sale_id, acting_username=None, acting_role=None):
-    conn = get_connection()
+    conn = get_connection(f"Reversed sale #{sale_id}")
     cursor = conn.cursor()
 
     cursor.execute("""

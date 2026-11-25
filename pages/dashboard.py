@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from i18n import T
 
 from database.db import (
     get_dashboard_stats,
@@ -206,7 +207,7 @@ class DashboardPage(QWidget):
         text_layout = QVBoxLayout()
         text_layout.setSpacing(6)
 
-        title = QLabel(label)
+        title = QLabel(T(label))
         title.setStyleSheet(f"""
             QLabel {{
                 color: #53627a;
@@ -379,7 +380,9 @@ class DashboardPage(QWidget):
         self.card_values["Returned Items"].setText(str(returned_items))
         self.card_values["Expiration Alert"].setText(str(expired))
         self.card_values["Low Stock"].setText(str(low_stock))
-        self.card_values["Revenue"].setText(f"{revenue:g} Ft")
+        amount = f"{revenue:,.2f}".rstrip("0").rstrip(".")
+        self.card_values["Revenue"].setText(f"{amount} Ft")
+        self.card_values["Revenue"].setToolTip("All-time sales minus refunds")
 
         self.refresh_low_stock_products()
         self.refresh_expiring_soon()

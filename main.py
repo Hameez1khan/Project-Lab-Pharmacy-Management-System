@@ -10,6 +10,9 @@ if __name__ == "__main__":
 
     # Start app
     app = QApplication(sys.argv)
+    from i18n import choose_language
+    if not choose_language(app):
+        sys.exit(0)
 
     # Open login screen
     window = LoginWindow()

@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from PyQt6.QtCore import Qt
+from i18n import T
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -70,6 +71,8 @@ class BatchFormDialog(QDialog):
         self.quantity_input = QLineEdit()
         self.expiry_input = QLineEdit()
         self.price_input = QLineEdit()
+        self.cost_input = QLineEdit()
+        self.cost_input.setPlaceholderText("0.00")
         self.min_stock_input = QLineEdit()
 
         self.expiry_input.setPlaceholderText("YYYY-MM-DD")
@@ -79,11 +82,12 @@ class BatchFormDialog(QDialog):
             ("Batch", self.batch_input),
             ("Quantity", self.quantity_input),
             ("Expiry", self.expiry_input),
+            ("Purchase cost per unit (Ft)", self.cost_input),
         ]
 
         if batch_row is not None:
             fields.extend([
-                ("Price (Ft)", self.price_input),
+                ("Product selling price (Ft)", self.price_input),
                 ("Min Stock", self.min_stock_input),
             ])
 
@@ -92,7 +96,7 @@ class BatchFormDialog(QDialog):
         for label, widget in fields:
             widget.setFixedHeight(42)
             widget.setStyleSheet(input_style())
-            form.addRow(label, widget)
+            form.addRow(T(label), widget)
 
         
 
@@ -103,6 +107,8 @@ class BatchFormDialog(QDialog):
             self.quantity_input.setText(str(batch_row["stock"]))
             self.expiry_input.setText(batch_row["expiry_date"])
             self.price_input.setText(str(batch_row["price"]))
+            self.cost_input.setText(f"{batch_row['purchase_unit_cost']:.2f}")
+            self.cost_input.setReadOnly(True)
             self.min_stock_input.setText(str(batch_row["min_stock_level"]))
 
 
@@ -141,6 +147,7 @@ class BatchFormDialog(QDialog):
             "expiry_date": self.expiry_input.text().strip(),
             "category": self.category_input.text().strip(),
             "price": self.price_input.text().strip(),
+            "purchase_unit_cost": self.cost_input.text().strip().replace(",", "."),
             "min_stock_level": self.min_stock_input.text().strip(),
         }
 
@@ -400,15 +407,23 @@ class BatchManagementPage(QWidget):
         row.setStyleSheet("background: transparent; border: none;")
 
         layout = QGridLayout()
-        layout.setContentsMargins(24, 0, 24, 0)
-        layout.setHorizontalSpacing(18)
+        widgets = []
 
-        labels = ["MEDICINE", "CATEGORY", "BATCH", "STOCK", "UNIT PRICE", "EXPIRY", "ACTIONS"]
-
-        stretches = [3, 2, 2, 2, 2, 2, 1]
+        labels = [
+            "MEDICINE", "CATEGORY", "BATCH", "STOCK",
+            "BUY / UNIT", "SELL / UNIT", "MARGIN", "EXPIRY", "ACTIONS",
+        ]
 
         for index, text in enumerate(labels):
-            label = QLabel(text)
+            label = QLabel(T(text))
+            label.setAlignment(
+                Qt.AlignmentFlag.AlignVCenter
+                | (
+                    Qt.AlignmentFlag.AlignLeft
+                    if index == 0
+                    else Qt.AlignmentFlag.AlignHCenter
+                )
+            )
             label.setStyleSheet("""
                 QLabel {
                     color: #7b8798;
@@ -418,14 +433,34 @@ class BatchManagementPage(QWidget):
                     border: none;
                 }
             """)
-            alignment = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-            if text == "ACTIONS":
-                alignment = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-            layout.addWidget(label, 0, index, alignment=alignment)
-            layout.setColumnStretch(index, stretches[index])
+            widgets.append(label)
 
+        self.configure_table_columns(layout, widgets)
         row.setLayout(layout)
         return row
+        
+    def configure_table_columns(self, layout, widgets):
+        layout.setContentsMargins(24, 0, 24, 0)
+        layout.setHorizontalSpacing(18)
+        layout.setVerticalSpacing(0)
+
+        stretches = [3, 2, 2, 2, 2, 2, 2, 2, 0]
+        actions_width = 138  # Edit + spacing + Delete
+
+        for index, widget in enumerate(widgets):
+            if index == len(widgets) - 1:
+                widget.setFixedWidth(actions_width)
+                layout.setColumnMinimumWidth(index, actions_width)
+            else:
+                widget.setMinimumWidth(0)
+                widget.setSizePolicy(
+                    QSizePolicy.Policy.Ignored,
+                    QSizePolicy.Policy.Preferred,
+                )
+                layout.setColumnMinimumWidth(index, 0)
+
+            layout.setColumnStretch(index, stretches[index])
+            layout.addWidget(widget, 0, index)
 
     def make_batch_row(self, row_data):
         today = datetime.today().date()
@@ -451,11 +486,11 @@ class BatchManagementPage(QWidget):
         row.setObjectName("batchRow")
         row.setFixedHeight(78)
         row.setStyleSheet("""
-            QFrame#batchRow {{
+            QFrame#batchRow {
                 border-top: 1px solid #edf2f7;
                 background-color: white;
                 border-radius: 0px;
-            }}
+            }
         """)
 
         layout = QGridLayout()
@@ -463,7 +498,6 @@ class BatchManagementPage(QWidget):
         layout.setHorizontalSpacing(18)
         layout.setVerticalSpacing(0)
 
-        stretches = [3, 2, 2, 2, 2, 2, 1]
 
         medicine = QLabel(row_data["name"])
         medicine.setStyleSheet("""
@@ -478,19 +512,22 @@ class BatchManagementPage(QWidget):
 
         category = QLabel(row_data["category"])
         category.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        category.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        category.setFixedHeight(28)
+        category.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
+        )
         category.setStyleSheet("""
             QLabel {
                 background-color: #eef4ff;
                 color: #2563eb;
-                border-radius: 14px;
-                padding: 6px 12px;
+                border: none;
+                border-radius: 8px;
+                padding: 0px 12px;
                 font-size: 11px;
                 font-weight: 700;
-                border: none;
             }
         """)
-        category.setMinimumHeight(26)
 
         batch = QLabel(row_data["batch_number"])
         batch.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -523,7 +560,15 @@ class BatchManagementPage(QWidget):
         """)
         stock.setMinimumHeight(26)
 
-        price = QLabel(f"{row_data['price']} Ft")
+        sell = float(row_data["price"])
+        buy = float(row_data["purchase_unit_cost"])
+        cost_label = QLabel(f"{buy:,.2f} Ft")
+        price = QLabel(f"{sell:,.2f} Ft")
+        margin = QLabel(f"{100 * (sell - buy) / sell:.1f}%" if sell > 0 and buy > 0 else "N/A")
+        margin.setToolTip("Gross margin at the current selling price, before discounts")
+        for label in (cost_label, margin):
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            label.setStyleSheet("background:transparent; border:none; color:#334155;")
         price.setAlignment(Qt.AlignmentFlag.AlignCenter)
         price.setStyleSheet("""
             QLabel {
@@ -563,13 +608,32 @@ class BatchManagementPage(QWidget):
             }
         """)
 
+        expiry_badge.setFixedHeight(24)
+        expiry_date.setFixedHeight(18)
+
+        expiry_badge.setFixedHeight(24)
+        expiry_date.setFixedHeight(18)
+
         expiry_wrap = QWidget()
-        expiry_wrap.setStyleSheet("background: transparent; border: none;")
+        expiry_wrap.setStyleSheet(
+            "background: transparent; border: none;"
+        )
+
         expiry_layout = QVBoxLayout()
         expiry_layout.setContentsMargins(0, 0, 0, 0)
         expiry_layout.setSpacing(4)
-        expiry_layout.addWidget(expiry_badge, alignment=Qt.AlignmentFlag.AlignLeft)
-        expiry_layout.addWidget(expiry_date, alignment=Qt.AlignmentFlag.AlignLeft)
+
+        expiry_layout.addStretch()
+        expiry_layout.addWidget(
+            expiry_badge,
+            alignment=Qt.AlignmentFlag.AlignHCenter,
+        )
+        expiry_layout.addWidget(
+            expiry_date,
+            alignment=Qt.AlignmentFlag.AlignHCenter,
+        )
+        expiry_layout.addStretch()
+
         expiry_wrap.setLayout(expiry_layout)
 
 
@@ -620,7 +684,6 @@ class BatchManagementPage(QWidget):
             }
         """)
 
-        actions_layout.addStretch()
         actions_layout.addWidget(edit_btn)
         actions_layout.addWidget(delete_btn)
         actions.setLayout(actions_layout)
@@ -643,16 +706,22 @@ class BatchManagementPage(QWidget):
         stock_layout.addStretch()
         stock_wrap.setLayout(stock_layout)
 
-        widgets = [medicine, category_wrap, batch, stock_wrap, price, expiry_wrap, actions]
+        widgets = [
+            medicine,
+            category_wrap,
+            batch,
+            stock_wrap,
+            cost_label,
+            price,
+            margin,
+            expiry_wrap,
+            actions,
+        ]
 
-        for index, widget in enumerate(widgets):
-            alignment = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-            if index == 6:
-                alignment = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-            layout.addWidget(widget, 0, index, alignment=alignment)
-            layout.setColumnStretch(index, stretches[index])
+        self.configure_table_columns(layout, widgets)
 
         row.setLayout(layout)
+        
         return row
 
     def open_add_dialog(self):
@@ -674,10 +743,8 @@ class BatchManagementPage(QWidget):
             return
 
         success, message = add_batch_record(
-            payload["name"],
-            payload["batch_number"],
-            payload["quantity"],
-            payload["expiry_date"],
+            payload["name"], payload["batch_number"], payload["quantity"],
+            payload["expiry_date"], payload["purchase_unit_cost"],
         )
 
         if not success:
@@ -703,13 +770,26 @@ class BatchManagementPage(QWidget):
         if not self.validate_payload(payload):
             return
 
-        update_batch_record(
-            row_data["batch_id"],
-            payload["quantity"],
-            payload["expiry_date"],
-            payload["price"],
-            payload["min_stock_level"],
-        )
+        reason = "Batch details edited"
+        if int(payload["quantity"]) != int(row_data["stock"]):
+            from PyQt6.QtWidgets import QInputDialog
+            reason, ok = QInputDialog.getText(
+                self, "Stock adjustment",
+                "Reason for changing stock (for example, damage or count correction):"
+            )
+            if not ok:
+                return
+            reason = reason.strip()
+            if not reason:
+                QMessageBox.warning(self, "Reason required", "Stock was not changed.")
+                return
+
+        if not update_batch_record(
+            row_data["batch_id"], payload["quantity"], payload["expiry_date"],
+            payload["price"], payload["min_stock_level"], reason=reason,
+        ):
+            QMessageBox.warning(self, "Not saved", "This batch no longer exists.")
+            return
 
         add_audit_log(
             self.current_user.get("username", "Unknown"),

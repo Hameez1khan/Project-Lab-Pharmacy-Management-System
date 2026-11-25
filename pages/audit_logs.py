@@ -217,6 +217,10 @@ class AuditLogsPage(QWidget):
         username = QLabel(row_data["username"])
         role = QLabel(row_data["role"] or "-")
         description = QLabel(row_data["description"])
+        description.setTextFormat(Qt.TextFormat.PlainText)
+        if row_data.get("details"):
+            from html import escape
+            description.setToolTip("<pre>" + escape(row_data["details"]) + "</pre>")
         created_at = QLabel(row_data["created_at"])
 
         username.setStyleSheet("""
