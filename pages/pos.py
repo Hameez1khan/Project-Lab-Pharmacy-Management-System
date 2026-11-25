@@ -16,6 +16,7 @@ from database.db import (
     is_valid_customer_ssn,
     preview_sale_allocations,
 )
+from i18n import T, TF, force_ltr, format_date, format_money, ltr_text
 
 BLUE = "#2563eb"
 
@@ -78,7 +79,7 @@ class BatchPickDialog(QDialog):
     def __init__(self, lines, total_amount, parent=None):
         super().__init__(parent)
 
-        self.setWindowTitle("Batch Picking Instructions")
+        self.setWindowTitle(T("Batch Picking Instructions"))
         self.setModal(True)
         self.setMinimumWidth(520)
 
@@ -86,7 +87,7 @@ class BatchPickDialog(QDialog):
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(14)
 
-        title = QLabel("Pick items from these batches")
+        title = QLabel(T("Pick items from these batches"))
         title.setStyleSheet("""
             QLabel {
                 font-size: 18px;
@@ -110,7 +111,7 @@ class BatchPickDialog(QDialog):
             card_layout.setContentsMargins(14, 12, 14, 12)
             card_layout.setSpacing(8)
 
-            name = QLabel(f"{line['product_name']} x{line['quantity']}")
+            name = QLabel(TF("{name} × {count}", name=line["product_name"], count=line["quantity"]))
             name.setStyleSheet("""
                 QLabel {
                     font-size: 15px;
@@ -121,18 +122,20 @@ class BatchPickDialog(QDialog):
             card_layout.addWidget(name)
 
             for allocation in line["allocations"]:
-                info = QLabel(
-                    f"Take {allocation['quantity']} from batch "
-                    f"{allocation['batch_number']} "
-                    f"(expires {allocation['expiry_date']})"
-                )
+                info = QLabel(TF(
+                    "Take {quantity} from batch {batch} (expires {expiry})",
+                    quantity=allocation["quantity"],
+                    batch=allocation["batch_number"],
+                    expiry=format_date(allocation["expiry_date"]),
+                ))
                 info.setStyleSheet("color: #374151; font-size: 13px;")
                 card_layout.addWidget(info)
 
             card.setLayout(card_layout)
             layout.addWidget(card)
 
-        total = QLabel(f"Total: {total_amount:g} Ft")
+        total = QLabel(TF("Total: {amount} Ft", amount=ltr_text(f"{total_amount:g}")))
+        total.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         total.setAlignment(Qt.AlignmentFlag.AlignRight)
         total.setStyleSheet("""
             QLabel {
@@ -146,8 +149,8 @@ class BatchPickDialog(QDialog):
         button_row = QHBoxLayout()
         button_row.addStretch()
 
-        cancel_btn = QPushButton("Cancel")
-        confirm_btn = QPushButton("Confirm Checkout")
+        cancel_btn = QPushButton(T("Cancel"))
+        confirm_btn = QPushButton(T("Confirm Checkout"))
 
         cancel_btn.clicked.connect(self.reject)
         confirm_btn.clicked.connect(self.accept)
@@ -181,7 +184,7 @@ class PaymentMethodDialog(QDialog):
     def __init__(self, total_amount, parent=None):
         super().__init__(parent)
 
-        self.setWindowTitle("Payment Method")
+        self.setWindowTitle(T("Payment Method"))
         self.setModal(True)
         self.setFixedWidth(360)
 
@@ -189,7 +192,7 @@ class PaymentMethodDialog(QDialog):
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(14)
 
-        title = QLabel("Select payment method")
+        title = QLabel(T("Select payment method"))
         title.setStyleSheet("""
             QLabel {
                 font-size: 18px;
@@ -198,7 +201,7 @@ class PaymentMethodDialog(QDialog):
             }
         """)
 
-        total = QLabel(f"Total: {total_amount:g} Ft")
+        total = QLabel(TF("Total: {amount} Ft", amount=ltr_text(f"{total_amount:g}")))
         total.setStyleSheet("""
             QLabel {
                 font-size: 15px;
@@ -208,7 +211,8 @@ class PaymentMethodDialog(QDialog):
         """)
 
         self.method_combo = QComboBox()
-        self.method_combo.addItems(["Cash", "Card"])
+        self.method_combo.addItem(T("Cash"), "Cash")
+        self.method_combo.addItem(T("Card"), "Card")
         self.method_combo.setFixedHeight(38)
         self.method_combo.setStyleSheet("""
             QComboBox {
@@ -230,8 +234,8 @@ class PaymentMethodDialog(QDialog):
         button_row = QHBoxLayout()
         button_row.addStretch()
 
-        cancel_btn = QPushButton("Cancel")
-        confirm_btn = QPushButton("Confirm")
+        cancel_btn = QPushButton(T("Cancel"))
+        confirm_btn = QPushButton(T("Confirm"))
 
         cancel_btn.clicked.connect(self.reject)
         confirm_btn.clicked.connect(self.accept)
@@ -265,7 +269,7 @@ class PaymentMethodDialog(QDialog):
         self.setLayout(layout)
 
     def get_payment_method(self):
-        return self.method_combo.currentText()
+        return self.method_combo.currentData()
 
 
 
@@ -273,7 +277,7 @@ class QuantityDialog(QDialog):
     def __init__(self, product_name, max_quantity, parent=None):
         super().__init__(parent)
 
-        self.setWindowTitle("Select Quantity")
+        self.setWindowTitle(T("Select Quantity"))
         self.setModal(True)
         self.setFixedWidth(360)
 
@@ -310,13 +314,13 @@ class QuantityDialog(QDialog):
                 border: 1px solid #2563eb;
             }
         """)
-        form.addRow("Quantity", self.quantity_input)
+        form.addRow(T("Quantity"), self.quantity_input)
 
         button_row = QHBoxLayout()
         button_row.addStretch()
 
-        cancel_btn = QPushButton("Cancel")
-        confirm_btn = QPushButton("Add")
+        cancel_btn = QPushButton(T("Cancel"))
+        confirm_btn = QPushButton(T("Add"))
 
         cancel_btn.clicked.connect(self.reject)
         confirm_btn.clicked.connect(self.accept)
@@ -359,7 +363,7 @@ class CustomerIdentityDialog(QDialog):
         self.details_required = details_required
         self.declined = False
 
-        self.setWindowTitle("Customer Details")
+        self.setWindowTitle(T("Customer details"))
         self.setModal(True)
         self.setFixedWidth(420)
 
@@ -367,7 +371,7 @@ class CustomerIdentityDialog(QDialog):
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(14)
 
-        title = QLabel("Customer details")
+        title = QLabel(T("Customer details"))
         title.setStyleSheet("""
             QLabel {
                 font-size: 18px;
@@ -376,11 +380,11 @@ class CustomerIdentityDialog(QDialog):
             }
         """)
 
-        subtitle = QLabel(
+        subtitle = QLabel(T(
             "SSN and name are required because the cart contains prescription products."
             if details_required else
             "Customer can share SSN and name, or decline for non-prescription purchases."
-        )
+        ))
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet("""
             QLabel {
@@ -393,11 +397,12 @@ class CustomerIdentityDialog(QDialog):
         form.setSpacing(12)
 
         self.name_input = QLineEdit()
-        self.name_input.setPlaceholderText("Customer name")
+        self.name_input.setPlaceholderText(T("Customer name"))
         self.name_input.setFixedHeight(38)
 
         self.ssn_input = QLineEdit()
-        self.ssn_input.setPlaceholderText("Customer SSN")
+        self.ssn_input.setPlaceholderText(T("Customer SSN"))
+        force_ltr(self.ssn_input)
         self.ssn_input.setFixedHeight(38)
 
         input_style = """
@@ -418,20 +423,20 @@ class CustomerIdentityDialog(QDialog):
         self.name_input.setStyleSheet(input_style)
         self.ssn_input.setStyleSheet(input_style)
 
-        form.addRow("Customer Name", self.name_input)
-        form.addRow("Customer SSN", self.ssn_input)
+        form.addRow(T("Customer Name"), self.name_input)
+        form.addRow(T("Customer SSN"), self.ssn_input)
 
         button_row = QHBoxLayout()
         button_row.addStretch()
 
         if not details_required:
-            decline_btn = QPushButton("Decline")
+            decline_btn = QPushButton(T("Decline"))
             decline_btn.setFixedHeight(38)
             decline_btn.clicked.connect(self.decline)
             button_row.addWidget(decline_btn)
 
-        cancel_btn = QPushButton("Cancel")
-        confirm_btn = QPushButton("Continue")
+        cancel_btn = QPushButton(T("Cancel"))
+        confirm_btn = QPushButton(T("Continue"))
 
         cancel_btn.clicked.connect(self.reject)
         confirm_btn.clicked.connect(self.accept)
@@ -480,7 +485,7 @@ class POSPage(QWidget):
         left_layout = QVBoxLayout()
         left_layout.setSpacing(18)
 
-        title = QLabel("Point of Sale")
+        title = QLabel(T("Point of Sale"))
         title.setStyleSheet("""
             QLabel {
                 color: #111827;
@@ -490,7 +495,7 @@ class POSPage(QWidget):
             }
         """)
 
-        subtitle = QLabel("Search products, add medicines to cart, and checkout")
+        subtitle = QLabel(T("Search products, add medicines to cart, and checkout"))
         subtitle.setStyleSheet("""
             QLabel {
                 color: #6b7280;
@@ -510,7 +515,7 @@ class POSPage(QWidget):
         search_row.setSpacing(12)
 
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search medicines by name or barcode")
+        self.search_input.setPlaceholderText(T("Search medicines by name or barcode"))
         self.search_input.setFixedHeight(42)
         self.search_input.textChanged.connect(self.refresh_products)
 
@@ -706,15 +711,15 @@ class POSPage(QWidget):
         self.update_cart()
 
     def refresh_filters(self):
-        selected = self.category_filter.currentText()
+        selected = self.category_filter.currentData()
 
         self.category_filter.blockSignals(True)
         self.category_filter.clear()
-        self.category_filter.addItem("All Categories")
+        self.category_filter.addItem(T("All Categories"), "")
         for category in get_categories():
-            self.category_filter.addItem(category)
+            self.category_filter.addItem(category, category)
 
-        index = self.category_filter.findText(selected)
+        index = self.category_filter.findData(selected)
         self.category_filter.setCurrentIndex(index if index >= 0 else 0)
         self.category_filter.blockSignals(False)
 
@@ -757,7 +762,7 @@ class POSPage(QWidget):
 
         prescription_label = None
         if product.get("prescription_required"):
-            prescription_label = QLabel("Requires prescription")
+            prescription_label = QLabel(T("Requires prescription"))
             prescription_label.setStyleSheet("""
                 QLabel {
                     background-color: #fff7ed;
@@ -771,7 +776,7 @@ class POSPage(QWidget):
             """)
 
         available_display = "100+" if product["available_stock"] > 100 else str(product["available_stock"])
-        available_label = QLabel(f"Available: {available_display}")
+        available_label = QLabel(TF("Available: {value}", value=available_display))
         available_label.setStyleSheet("""
             QLabel {
                 color: #6b7280;
@@ -785,7 +790,7 @@ class POSPage(QWidget):
         price_row.setSpacing(8)
 
         if product.get("has_discount"):
-            old_price = QLabel(f"{product['original_price']:g} Ft")
+            old_price = force_ltr(QLabel(format_money(product["original_price"], 0)), right=True)
             old_price.setStyleSheet("""
                 QLabel {
                     color: #9ca3af;
@@ -797,7 +802,7 @@ class POSPage(QWidget):
                 }
             """)
 
-            new_price = QLabel(f"{product['price']:g} Ft")
+            new_price = force_ltr(QLabel(format_money(product["price"], 0)), right=True)
             new_price.setStyleSheet("""
                 QLabel {
                     color: #dc2626;
@@ -825,7 +830,7 @@ class POSPage(QWidget):
             price_row.addWidget(discount_badge)
             price_row.addStretch()
         else:
-            price = QLabel(f"{product['price']:g} Ft")
+            price = force_ltr(QLabel(format_money(product["price"], 0)), right=True)
             price.setStyleSheet("""
                 QLabel {
                     color: #0f766e;
@@ -838,7 +843,7 @@ class POSPage(QWidget):
             price_row.addWidget(price)
             price_row.addStretch()
 
-        add_btn = QPushButton("Add")
+        add_btn = QPushButton(T("Add"))
         add_btn.setFixedSize(72, 34)
         add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_btn.setEnabled(product["available_stock"] > 0)
@@ -925,7 +930,7 @@ class POSPage(QWidget):
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(14)
 
-        title = QLabel("Cart")
+        title = QLabel(T("Cart"))
         title.setStyleSheet("""
             QLabel {
                 color: #111827;
@@ -983,7 +988,7 @@ class POSPage(QWidget):
             }
         """)
 
-        self.total_label = QLabel("Total: 0 Ft")
+        self.total_label = QLabel(TF("Total: {amount} Ft", amount=ltr_text("0")))
         self.total_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.total_label.setStyleSheet("""
             QLabel {
@@ -995,7 +1000,7 @@ class POSPage(QWidget):
             }
         """)
 
-        checkout_btn = QPushButton("Checkout")
+        checkout_btn = QPushButton(T("Checkout"))
         checkout_btn.setFixedHeight(42)
         checkout_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         checkout_btn.clicked.connect(self.checkout)
@@ -1014,7 +1019,7 @@ class POSPage(QWidget):
             }
         """)
 
-        clear_btn = QPushButton("Empty Cart")
+        clear_btn = QPushButton(T("Empty Cart"))
         clear_btn.setFixedHeight(40)
         clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         clear_btn.clicked.connect(self.empty_cart)
@@ -1050,12 +1055,12 @@ class POSPage(QWidget):
                 widget.deleteLater()
 
         search_text = self.search_input.text().strip()
-        selected_category = self.category_filter.currentText()
+        selected_category = self.category_filter.currentData() or ""
 
         filtered_products = get_products_for_pos(search_text, selected_category)
 
         if not filtered_products:
-            empty_label = QLabel("No medicines found")
+            empty_label = QLabel(T("No medicines found"))
             empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             empty_label.setMinimumHeight(160)
             empty_label.setStyleSheet("""
@@ -1094,8 +1099,8 @@ class POSPage(QWidget):
         if max_addable <= 0:
             QMessageBox.warning(
                 self,
-                "Stock Limit",
-                f"Only {available_stock} non-expired unit(s) of {product['name']} are available."
+                T("Stock Limit"),
+                TF("Only {count} non-expired unit(s) of {name} are available.", count=available_stock, name=product["name"])
             )
             return
 
@@ -1128,10 +1133,10 @@ class POSPage(QWidget):
         total = 0
 
         if not self.cart:
-            empty_item = QListWidgetItem("Cart is empty")
+            empty_item = QListWidgetItem(T("Your cart is empty"))
             empty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.cart_list.addItem(empty_item)
-            self.total_label.setText("Total: 0 Ft")
+            self.total_label.setText(TF("Total: {amount} Ft", amount=ltr_text("0")))
             return
 
         for item in self.cart.values():
@@ -1141,7 +1146,7 @@ class POSPage(QWidget):
             line_text = f"{item['name']} x{item['quantity']} = {subtotal:g} Ft"
             self.cart_list.addItem(line_text)
 
-        self.total_label.setText(f"Total: {total:g} Ft")
+        self.total_label.setText(TF("Total: {amount} Ft", amount=ltr_text(f"{total:g}")))
 
 
 
@@ -1149,8 +1154,8 @@ class POSPage(QWidget):
         if not self.cart:
             QMessageBox.information(
                 self,
-                "Cart Empty",
-                "Please add medicines to the cart first."
+                T("Cart Empty"),
+                T("Please add medicines to the cart first.")
             )
             return
 
@@ -1172,8 +1177,8 @@ class POSPage(QWidget):
         if identity_required and (not customer_name or not customer_ssn):
             QMessageBox.warning(
                 self,
-                "Customer Details Required",
-                "Customer SSN and name are required because the cart contains prescription products."
+                T("Customer Details Required"),
+                T("Customer SSN and name are required because the cart contains prescription products.")
             )
             return
 
@@ -1184,23 +1189,23 @@ class POSPage(QWidget):
             if not customer_name or not customer_ssn:
                 QMessageBox.warning(
                     self,
-                    "Incomplete Details",
-                    "Please provide both customer name and SSN, or decline."
+                    T("Incomplete Details"),
+                    T("Please provide both customer name and SSN, or decline.")
                 )
                 return
 
         if customer_ssn and not is_valid_customer_ssn(customer_ssn):
             QMessageBox.warning(
                 self,
-                "Invalid SSN",
-                "Customer SSN must contain 9 digits."
+                T("Invalid SSN"),
+                T("Customer SSN must contain 9 digits.")
             )
             return
 
         try:
             plan, total_amount = preview_sale_allocations(cart_items)
         except ValueError as error:
-            QMessageBox.warning(self, "Insufficient Stock", str(error))
+            QMessageBox.warning(self, T("Insufficient Stock"), T(str(error)))
             return
 
         dialog = BatchPickDialog(plan, total_amount, self)
@@ -1224,13 +1229,13 @@ class POSPage(QWidget):
                 customer_name=customer_name or None
             )
         except ValueError as error:
-            QMessageBox.warning(self, "Checkout Failed", str(error))
+            QMessageBox.warning(self, T("Checkout Failed"), T(str(error)))
             return
         except Exception as error:
             QMessageBox.critical(
                 self,
-                "Checkout Failed",
-                f"An unexpected error occurred while saving the sale:\n{error}"
+                T("Checkout Failed"),
+                TF("An unexpected error occurred while saving the sale:\n{error}", error=error)
             )
             return
 
@@ -1240,8 +1245,8 @@ class POSPage(QWidget):
 
         QMessageBox.information(
             self,
-            "Checkout Complete",
-            "Sale saved and FEFO picking instructions confirmed."
+            T("Checkout Complete"),
+            T("Sale saved and FEFO picking instructions confirmed.")
         )
 
 
@@ -1251,15 +1256,15 @@ class POSPage(QWidget):
         if not self.cart:
             QMessageBox.information(
                 self,
-                "Cart Empty",
-                "The cart is already empty."
+                T("Cart Empty"),
+                T("The cart is already empty.")
             )
             return
 
         confirm = QMessageBox.question(
             self,
-            "Empty Cart",
-            "Are you sure you want to remove all items from the cart?",
+            T("Empty Cart"),
+            T("Are you sure you want to remove all items from the cart?"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )

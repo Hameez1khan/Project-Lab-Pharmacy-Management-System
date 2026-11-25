@@ -26,6 +26,7 @@ from database.db import (
     get_product_rows,
     update_product_record,
 )
+from i18n import T, TF, force_ltr, format_money
 from ui_theme import (
     PRIMARY,
     BLUE,
@@ -52,7 +53,7 @@ class ProductFormDialog(QDialog):
         super().__init__(parent)
         self.product_row = product_row
 
-        self.setWindowTitle("Add Product" if product_row is None else "Edit Product")
+        self.setWindowTitle(T("Add Product" if product_row is None else "Edit Product"))
         self.setModal(True)
         self.setFixedWidth(420)
 
@@ -67,7 +68,7 @@ class ProductFormDialog(QDialog):
         self.min_stock_input = QLineEdit()
         self.category_input = QLineEdit()
 
-        self.prescription_required_input = QCheckBox("Requires Prescription")
+        self.prescription_required_input = QCheckBox(T("Requires Prescription"))
         self.prescription_required_input.setStyleSheet(checkbox_style(accent=BLUE))
 
 
@@ -83,9 +84,9 @@ class ProductFormDialog(QDialog):
         for label, widget in fields:
             widget.setFixedHeight(42)
             widget.setStyleSheet(input_style())
-            form.addRow(label, widget)
+            form.addRow(T(label), widget)
 
-        form.addRow("Prescription", self.prescription_required_input)
+        form.addRow(T("Prescription"), self.prescription_required_input)
 
         if product_row:
             self.name_input.setText(product_row["name"])
@@ -100,8 +101,8 @@ class ProductFormDialog(QDialog):
         button_row = QHBoxLayout()
         button_row.addStretch()
 
-        cancel_btn = QPushButton("Cancel")
-        save_btn = QPushButton("Save")
+        cancel_btn = QPushButton(T("Cancel"))
+        save_btn = QPushButton(T("Save"))
 
         cancel_btn.clicked.connect(self.reject)
         save_btn.clicked.connect(self.accept)
@@ -149,7 +150,7 @@ class ProductPage(QWidget):
         header_text = QVBoxLayout()
         header_text.setSpacing(4)
 
-        title = QLabel("Products")
+        title = QLabel(T("Products"))
         title.setStyleSheet("""
             QLabel {
                 color: #0f172a;
@@ -160,7 +161,7 @@ class ProductPage(QWidget):
             }
         """)
 
-        subtitle = QLabel("View and manage product records")
+        subtitle = QLabel(T("View and manage product records"))
         subtitle.setStyleSheet("""
             QLabel {
                 color: #64748b;
@@ -177,7 +178,7 @@ class ProductPage(QWidget):
         header_row.addStretch()
 
         if self.is_admin:
-            add_btn = QPushButton("+ Add Product")
+            add_btn = QPushButton(T("+ Add Product"))
             add_btn.setFixedSize(170, 42)
             add_btn.clicked.connect(self.open_add_dialog)
             add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -215,7 +216,7 @@ class ProductPage(QWidget):
         filter_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search products...")
+        self.search_input.setPlaceholderText(T("Search products..."))
         self.search_input.setFixedHeight(44)
         self.search_input.textChanged.connect(self.refresh_table)
 
@@ -304,15 +305,15 @@ class ProductPage(QWidget):
         self.refresh_table()
 
     def reload_filters(self):
-        current = self.category_filter.currentText()
+        current = self.category_filter.currentData()
 
         self.category_filter.blockSignals(True)
         self.category_filter.clear()
-        self.category_filter.addItem("All Categories")
+        self.category_filter.addItem(T("All Categories"), "")
         for category in get_categories():
-            self.category_filter.addItem(category)
+            self.category_filter.addItem(category, category)
 
-        index = self.category_filter.findText(current)
+        index = self.category_filter.findData(current)
         self.category_filter.setCurrentIndex(index if index >= 0 else 0)
         self.category_filter.blockSignals(False)
 
@@ -340,11 +341,11 @@ class ProductPage(QWidget):
 
         rows = get_product_rows(
             search_text=self.search_input.text(),
-            category=self.category_filter.currentText(),
+            category=self.category_filter.currentData() or "",
         )
 
         if not rows:
-            empty = QLabel("No products found")
+            empty = QLabel(T("No products found"))
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
             empty.setMinimumHeight(180)
             empty.setStyleSheet("""
@@ -379,7 +380,7 @@ class ProductPage(QWidget):
             stretches.append(2)
 
         for index, text in enumerate(labels):
-            label = QLabel(text)
+            label = QLabel(T(text))
             label.setStyleSheet("""
                 QLabel {
                     color: #7b8798;
@@ -440,7 +441,7 @@ class ProductPage(QWidget):
             }
         """)
 
-        barcode = QLabel(row_data["barcode"] or "-")
+        barcode = force_ltr(QLabel(row_data["barcode"] or "-"))
         barcode.setStyleSheet("""
             QLabel {
                 color: #1e3a8a;
@@ -451,7 +452,7 @@ class ProductPage(QWidget):
             }
         """)
 
-        price = QLabel(f"{row_data['selling_price']:g} Ft")
+        price = force_ltr(QLabel(format_money(row_data["selling_price"], 0)), right=True)
         price.setStyleSheet("""
             QLabel {
                 color: #0f766e;
@@ -489,7 +490,7 @@ class ProductPage(QWidget):
             }
         """)
 
-        prescription = QLabel("Yes" if row_data["prescription_required"] else "No")
+        prescription = QLabel(T("Yes" if row_data["prescription_required"] else "No"))
         prescription.setAlignment(Qt.AlignmentFlag.AlignCenter)
         prescription.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         prescription.setMinimumHeight(26)
@@ -507,7 +508,7 @@ class ProductPage(QWidget):
 
         available_color = "#dc2626" if row_data["available_stock"] <= 0 else "#16a34a"
         available_bg = "#fff1f2" if row_data["available_stock"] <= 0 else "#ecfdf5"
-        available_stock = QLabel(f"{row_data['available_stock']} units")
+        available_stock = QLabel(TF("{count} units", count=row_data["available_stock"]))
         available_stock.setAlignment(Qt.AlignmentFlag.AlignCenter)
         available_stock.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         available_stock.setMinimumHeight(26)
@@ -535,12 +536,12 @@ class ProductPage(QWidget):
             actions_layout.setContentsMargins(0, 0, 0, 0)
             actions_layout.setSpacing(8)
 
-            edit_btn = QPushButton("Edit")
+            edit_btn = QPushButton(T("Edit"))
             edit_btn.setFixedSize(56, 30)
             edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             edit_btn.clicked.connect(lambda: self.open_edit_dialog(row_data))
 
-            delete_btn = QPushButton("Delete")
+            delete_btn = QPushButton(T("Delete"))
             delete_btn.setFixedSize(64, 30)
             delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             delete_btn.clicked.connect(lambda: self.delete_product(row_data))
@@ -649,7 +650,7 @@ class ProductPage(QWidget):
 
 
         if not success:
-            QMessageBox.warning(self, "Add Product Failed", message)
+            QMessageBox.warning(self, T("Add Product Failed"), T(message))
             return
 
         add_audit_log(
@@ -683,7 +684,7 @@ class ProductPage(QWidget):
 
 
         if not success:
-            QMessageBox.warning(self, "Update Product Failed", message)
+            QMessageBox.warning(self, T("Update Product Failed"), T(message))
             return
 
         add_audit_log(
@@ -698,8 +699,8 @@ class ProductPage(QWidget):
     def delete_product(self, row_data):
         confirm = QMessageBox.question(
             self,
-            "Delete Product",
-            f"Delete product {row_data['name']}?",
+            T("Delete Product"),
+            TF("Delete product {name}?", name=row_data["name"]),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -710,7 +711,7 @@ class ProductPage(QWidget):
         success, message = delete_product_record(row_data["id"])
 
         if not success:
-            QMessageBox.warning(self, "Delete Failed", message)
+            QMessageBox.warning(self, T("Delete Failed"), T(message))
             return
 
         add_audit_log(
@@ -719,14 +720,14 @@ class ProductPage(QWidget):
             role=self.current_user.get("role", "")
         )
 
-        QMessageBox.information(self, "Product Deleted", message)
+        QMessageBox.information(self, T("Product Deleted"), T(message))
         self.reload_filters()
         self.refresh_table()
 
     def validate_payload(self, payload):
         required = ["name", "selling_price", "min_stock_level", "category"]
         if any(not payload[key] for key in required):
-            QMessageBox.warning(self, "Missing Data", "Please fill in all required fields.")
+            QMessageBox.warning(self, T("Missing Data"), T("Please fill in all required fields."))
             return False
 
         try:
@@ -734,7 +735,7 @@ class ProductPage(QWidget):
             if price < 0:
                 raise ValueError
         except ValueError:
-            QMessageBox.warning(self, "Invalid Data", "Selling price must be a valid non-negative number.")
+            QMessageBox.warning(self, T("Invalid Data"), T("Selling price must be a valid non-negative number."))
             return False
 
         try:
@@ -742,15 +743,15 @@ class ProductPage(QWidget):
             if min_stock < 0:
                 raise ValueError
         except ValueError:
-            QMessageBox.warning(self, "Invalid Data", "Min stock must be a valid non-negative number.")
+            QMessageBox.warning(self, T("Invalid Data"), T("Min stock must be a valid non-negative number."))
             return False
 
         barcode = payload["barcode"].strip()
         if barcode and not barcode.isdigit():
             QMessageBox.warning(
                 self,
-                "Invalid Barcode",
-                "Product barcode must contain digits only."
+                T("Invalid Barcode"),
+                T("Product barcode must contain digits only.")
             )
             return False
 

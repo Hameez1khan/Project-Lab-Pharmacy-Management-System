@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QStyle, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 from database.reporting import report_data
-from i18n import T
+from i18n import T, TF, format_money, format_number
 from ui_theme import (
     BLUE, BORDER, CANVAS, SURFACE, SURFACE_SOFT, TEXT, TEXT_MUTED,
     page_title_style, page_subtitle_style, primary_button_style, soft_button_style,
@@ -77,7 +77,7 @@ class ReportsPage(QWidget):
         row.addWidget(QLabel(T("Report")))
         self.view = QComboBox()
         for key in ("Daily", "Monthly", "Payment", "Products", "Returns",
-                    "Low stock now", "Expiry now"):
+                    "Low stock now", "Expiry now", "Fast movers", "Slow movers"):
             self.view.addItem(T(key), key)
         row.addWidget(self.view)
         row.addStretch()
@@ -143,16 +143,16 @@ class ReportsPage(QWidget):
             f.locale().toString(f.date(), "dd MMM yyyy") for f in self.dates
         ))
         self.data = {}
-        self.problem = "Choose an end date on or after the start date."
+        self.problem = T("Choose an end date on or after the start date.")
         if start <= end:
             try:
                 self.data = report_data(start, end)
             except Exception as e:
-                self.problem = f"Could not load reports: {e}"
+                self.problem = TF("Could not load reports: {error}", error=e)
         daily = self.data.get("Daily", ([], []))[1]
         for ix, label in enumerate(self.metrics, 1):
             n = sum(r[ix] or 0 for r in daily)
-            label.setText((f"{n:,}" if ix == 1 else f"{n:,.2f} Ft") if self.data else "-")
+            label.setText((format_number(n, 0) if ix == 1 else format_money(n)) if self.data else "-")
         self.export_btn.setEnabled(bool(self.data))
         self.render()
 
@@ -161,9 +161,9 @@ class ReportsPage(QWidget):
         headers, rows = self.data.get(report_key, ([], []))
         if report_key in ("Daily", "Monthly"):
             rows = rows[::-1]
-        self.count.setText(f"{len(rows)} rows" if self.data else "")
+        self.count.setText(TF("{count} rows", count=len(rows)) if self.data else "")
         if not rows:
-            self.empty.setText("No matching records." if self.data else self.problem)
+            self.empty.setText(T("No matching records.") if self.data else self.problem)
             self.stack.setCurrentWidget(self.empty)
             return
         self.table.setColumnCount(len(headers))
@@ -172,7 +172,7 @@ class ReportsPage(QWidget):
         for i, row in enumerate(rows):
             for j, v in enumerate(row):
                 money = headers[j].endswith("(Ft)")
-                item = QTableWidgetItem(f"{v:,.2f}" if money and v is not None
+                item = QTableWidgetItem(format_number(v, 2) if money and v is not None
                                         else str(v if v is not None else ""))
                 self.table.setItem(i, j, item)
                 align = (Qt.AlignmentFlag.AlignRight if isinstance(v, (int, float))
@@ -188,7 +188,7 @@ class ReportsPage(QWidget):
 
     def file_action(self, title, action, opening=False):
         dialog = QFileDialog.getOpenFileName if opening else QFileDialog.getSaveFileName
-        path, _ = dialog(self, title, "", "Excel Workbook (*.xlsx)")
+        path, _ = dialog(self, T(title), "", T("Excel Workbook (*.xlsx)"))
         if not path:
             return
         if not opening and not path.lower().endswith(".xlsx"):
@@ -196,9 +196,9 @@ class ReportsPage(QWidget):
         try:
             message = action(path)
         except Exception as e:
-            QMessageBox.warning(self, title, str(e))
+            QMessageBox.warning(self, T(title), str(e))
             return
-        QMessageBox.information(self, title, message or "Export complete.")
+        QMessageBox.information(self, T(title), T(message or "Export complete."))
 
     def save_report(self):
         from openpyxl import Workbook
@@ -207,13 +207,13 @@ class ReportsPage(QWidget):
 
         def save(path):
             wb = Workbook()
-            wb.active.title = "Period"
-            put(wb.active, ["From", "To", "Inventory as of"])
+            wb.active.title = T("Period")
+            put(wb.active, [T("From"), T("To"), T("Inventory as of")])
             put(wb.active, [f.date().toString("yyyy-MM-dd") for f in self.dates]
                 + [QDate.currentDate().toString("yyyy-MM-dd")])
             for title, (cols, rows) in self.data.items():
-                ws = wb.create_sheet(title)
-                put(ws, cols)
+                ws = wb.create_sheet(T(title)[:31])
+                put(ws, [T(column) for column in cols])
                 for row in rows:
                     put(ws, row)
                 ws.freeze_panes = "A2"
@@ -235,15 +235,15 @@ class ReportsPage(QWidget):
 
         def apply(path):
             answer = QMessageBox.question(
-                self, "Merge pharmacy data",
-                "Add missing records from this workbook? Existing records will not be overwritten.",
+                self, T("Merge pharmacy data"),
+                T("Add missing records from this workbook? Existing records will not be overwritten."),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
             if answer != QMessageBox.StandardButton.Yes:
-                return "No changes made."
+                return T("No changes made.")
             added, skipped = import_book(path)
             self.refresh()
-            return f"Added: {added}\nAlready present: {skipped}"
+            return TF("Added: {added}\nAlready present: {skipped}", added=added, skipped=skipped)
 
         self.file_action("Merge pharmacy data", apply, True)

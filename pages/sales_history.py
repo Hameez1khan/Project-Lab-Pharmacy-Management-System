@@ -22,6 +22,7 @@ from database.db import (
     get_sales_history,
     process_sale_return,
 )
+from i18n import T, TF, force_ltr, format_date, format_money, is_rtl, language
 from ui_theme import (
     BLUE,
     PRIMARY,
@@ -49,7 +50,7 @@ class ReturnItemsDialog(QDialog):
         self.sale_context = sale_context
         self.quantity_inputs = {}
 
-        self.setWindowTitle("Return Items")
+        self.setWindowTitle(T("Return Items"))
         self.setModal(True)
         self.setMinimumWidth(620)
 
@@ -57,7 +58,7 @@ class ReturnItemsDialog(QDialog):
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(14)
 
-        title = QLabel(f"Return items from {sale_context['receipt_number']}")
+        title = QLabel(TF("Return items from {receipt}", receipt=sale_context["receipt_number"]))
         title.setStyleSheet("""
             QLabel {
                 color: #111827;
@@ -66,10 +67,11 @@ class ReturnItemsDialog(QDialog):
             }
         """)
 
-        subtitle = QLabel(
-            f"Sold on {sale_context['sale_datetime']}. Returns are allowed until "
-            f"{sale_context['return_deadline']}."
-        )
+        subtitle = QLabel(TF(
+            "Sold on {sold}. Returns are allowed until {deadline}.",
+            sold=format_date(sale_context["sale_datetime"], include_time=True),
+            deadline=format_date(sale_context["return_deadline"]),
+        ))
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet("""
             QLabel {
@@ -104,10 +106,13 @@ class ReturnItemsDialog(QDialog):
                 }
             """)
 
-            meta = QLabel(
-                f"Sold: {item['sold_quantity']} | Already returned: {item['returned_quantity']} | "
-                f"Available now: {item['returnable_quantity']} | Unit price: {item['unit_price']:g} Ft"
-            )
+            meta = QLabel(TF(
+                "Sold: {sold} • Already returned: {returned} • Available now: {available} • Unit price: {price}",
+                sold=item["sold_quantity"],
+                returned=item["returned_quantity"],
+                available=item["returnable_quantity"],
+                price=format_money(item["unit_price"], 0),
+            ))
             meta.setStyleSheet("""
                 QLabel {
                     color: #374151;
@@ -119,9 +124,10 @@ class ReturnItemsDialog(QDialog):
             card_layout.addWidget(meta)
 
             if item["expired_blocked_quantity"] > 0:
-                expired_note = QLabel(
-                    f"{item['expired_blocked_quantity']} unit(s) can no longer be returned because they are expired."
-                )
+                expired_note = QLabel(TF(
+                    "{count} unit(s) can no longer be returned because they are expired.",
+                    count=item["expired_blocked_quantity"],
+                ))
                 expired_note.setWordWrap(True)
                 expired_note.setStyleSheet("""
                     QLabel {
@@ -135,7 +141,7 @@ class ReturnItemsDialog(QDialog):
             controls = QHBoxLayout()
             controls.addStretch()
 
-            quantity_label = QLabel("Return quantity")
+            quantity_label = QLabel(T("Return quantity"))
             quantity_label.setStyleSheet("color: #111827; font-size: 13px; font-weight: 600;")
 
             quantity_input = QSpinBox()
@@ -172,8 +178,8 @@ class ReturnItemsDialog(QDialog):
         button_row = QHBoxLayout()
         button_row.addStretch()
 
-        cancel_btn = QPushButton("Cancel")
-        confirm_btn = QPushButton("Process Return")
+        cancel_btn = QPushButton(T("Cancel"))
+        confirm_btn = QPushButton(T("Process Return"))
 
         cancel_btn.clicked.connect(self.reject)
         confirm_btn.clicked.connect(self.accept)
@@ -231,7 +237,7 @@ class SalesHistoryPage(QWidget):
         header_layout = QVBoxLayout()
         header_layout.setSpacing(4)
 
-        title = QLabel("Sales History")
+        title = QLabel(T("Sales History"))
         title.setStyleSheet("""
             QLabel {
                 color: #0f172a;
@@ -242,7 +248,7 @@ class SalesHistoryPage(QWidget):
             }
         """)
 
-        subtitle = QLabel("View all completed sales")
+        subtitle = QLabel(T("View all completed sales"))
         subtitle.setStyleSheet("""
             QLabel {
                 color: #64748b;
@@ -271,7 +277,7 @@ class SalesHistoryPage(QWidget):
         filter_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search by receipt ID...")
+        self.search_input.setPlaceholderText(T("Search by receipt ID..."))
         self.search_input.setFixedHeight(44)
         self.search_input.textChanged.connect(self.refresh_table)
         self.search_input.setStyleSheet("""
@@ -340,7 +346,7 @@ class SalesHistoryPage(QWidget):
         rows = get_sales_history(self.search_input.text())
 
         if not rows:
-            empty = QLabel("No sales found")
+            empty = QLabel(T("No sales found"))
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
             empty.setMinimumHeight(180)
             empty.setStyleSheet("""
@@ -372,7 +378,7 @@ class SalesHistoryPage(QWidget):
 
 
         for index, text in enumerate(labels):
-            label = QLabel(text)
+            label = QLabel(T(text))
             label.setStyleSheet("""
                 QLabel {
                     color: #7b8798;
@@ -412,7 +418,7 @@ class SalesHistoryPage(QWidget):
 
 
 
-        receipt_id = QLabel(row_data["receipt_number"])
+        receipt_id = force_ltr(QLabel(row_data["receipt_number"]))
         receipt_id.setStyleSheet("""
             QLabel {
                 color: #0f172a;
@@ -435,7 +441,7 @@ class SalesHistoryPage(QWidget):
             }
         """)
 
-        date = QLabel(row_data["date"])
+        date = force_ltr(QLabel(format_date(row_data["date"], include_time=True)))
         date.setStyleSheet("""
             QLabel {
                 color: #475569;
@@ -446,7 +452,7 @@ class SalesHistoryPage(QWidget):
             }
         """)
 
-        total = QLabel(f"{row_data['total']:g} Ft")
+        total = force_ltr(QLabel(format_money(row_data["total"], 0)), right=True)
         total.setAlignment(Qt.AlignmentFlag.AlignCenter)
         total.setStyleSheet("""
             QLabel {
@@ -458,7 +464,7 @@ class SalesHistoryPage(QWidget):
             }
         """)
 
-        payment = QLabel(row_data["payment_method"])
+        payment = QLabel(T(row_data["payment_method"]))
         payment.setStyleSheet("""
             QLabel {
                 color: #0f172a;
@@ -468,7 +474,7 @@ class SalesHistoryPage(QWidget):
                 border: none;
             }
         """)
-        download_btn = QPushButton("Download")
+        download_btn = QPushButton(T("Download"))
         download_btn.setFixedSize(92, 32)
         download_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         download_btn.setStyleSheet("""
@@ -495,7 +501,7 @@ class SalesHistoryPage(QWidget):
         actions_layout.setContentsMargins(0, 0, 0, 0)
         actions_layout.setSpacing(8)
 
-        return_btn = QPushButton("Return")
+        return_btn = QPushButton(T("Return"))
         return_btn.setFixedSize(78, 32)
         return_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         return_btn.clicked.connect(lambda: self.return_sale(row_data["id"]))
@@ -515,7 +521,7 @@ class SalesHistoryPage(QWidget):
             }
         """)
 
-        delete_btn = QPushButton("Delete")
+        delete_btn = QPushButton(T("Delete"))
         delete_btn.setFixedSize(78, 32)
         delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         delete_btn.clicked.connect(lambda: self.delete_sale(row_data["id"], row_data["receipt_number"]))
@@ -559,13 +565,13 @@ class SalesHistoryPage(QWidget):
 
     def delete_sale(self, sale_id, receipt_number=None):
         if not self.is_admin:
-            QMessageBox.warning(self, "Access Denied", "Only administrators can delete sales history.")
+            QMessageBox.warning(self, T("Access Denied"), T("Only administrators can delete sales history."))
             return
 
         confirm = QMessageBox.question(
             self,
-            "Delete Sale",
-            f"Are you sure you want to delete sale {receipt_number or sale_id}?",
+            T("Delete Sale"),
+            TF("Are you sure you want to delete sale {receipt}?", receipt=receipt_number or sale_id),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -580,32 +586,34 @@ class SalesHistoryPage(QWidget):
         )
 
         if not success:
-            QMessageBox.warning(self, "Delete Failed", message)
+            QMessageBox.warning(self, T("Delete Failed"), T(message))
             return
 
-        QMessageBox.information(self, "Sale Deleted", message)
+        QMessageBox.information(self, T("Sale Deleted"), T(message))
         self.refresh_table()
 
     def return_sale(self, sale_id):
         try:
             sale_context = get_sale_return_candidates(sale_id)
         except ValueError as error:
-            QMessageBox.warning(self, "Return Failed", str(error))
+            QMessageBox.warning(self, T("Return Failed"), T(str(error)))
             return
 
         if not sale_context["return_window_open"]:
             QMessageBox.warning(
                 self,
-                "Return Window Closed",
-                f"{sale_context['receipt_number']} can only be returned until {sale_context['return_deadline']}."
+                T("Return Window Closed"),
+                TF("{receipt} can only be returned until {deadline}.",
+                   receipt=sale_context["receipt_number"],
+                   deadline=format_date(sale_context["return_deadline"]))
             )
             return
 
         if not any(item["returnable_quantity"] > 0 for item in sale_context["items"]):
             QMessageBox.warning(
                 self,
-                "Nothing Returnable",
-                "All remaining sold units are already returned or expired."
+                T("Nothing Returnable"),
+                T("All remaining sold units are already returned or expired.")
             )
             return
 
@@ -617,8 +625,8 @@ class SalesHistoryPage(QWidget):
         if not selected_items:
             QMessageBox.warning(
                 self,
-                "No Items Selected",
-                "Select at least one item quantity to return."
+                T("No Items Selected"),
+                T("Select at least one item quantity to return.")
             )
             return
 
@@ -633,8 +641,9 @@ class SalesHistoryPage(QWidget):
 
         confirm = QMessageBox.question(
             self,
-            "Confirm Return",
-            f"Process return for {sale_context['receipt_number']}?\nRefund amount: {refund_total:g} Ft",
+            T("Confirm Return"),
+            TF("Process return for {receipt}?\nRefund amount: {amount}",
+               receipt=sale_context["receipt_number"], amount=format_money(refund_total, 0)),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -650,10 +659,10 @@ class SalesHistoryPage(QWidget):
         )
 
         if not success:
-            QMessageBox.warning(self, "Return Failed", message)
+            QMessageBox.warning(self, T("Return Failed"), T(message))
             return
 
-        QMessageBox.information(self, "Return Complete", message)
+        QMessageBox.information(self, T("Return Complete"), T(message))
         self.refresh_table()
 
 
@@ -661,7 +670,7 @@ class SalesHistoryPage(QWidget):
         receipt_data = get_sale_receipt_data(sale_id)
 
         if not receipt_data:
-            QMessageBox.warning(self, "Receipt Error", "Sale receipt data could not be found.")
+            QMessageBox.warning(self, T("Receipt Error"), T("Sale receipt data could not be found."))
             return
 
         downloads_dir = Path.home() / "Downloads"
@@ -674,8 +683,9 @@ class SalesHistoryPage(QWidget):
 
         QMessageBox.information(
             self,
-            "Receipt Downloaded",
-            f"Receipt saved to Downloads as Receipt-{receipt_data['receipt_number'].replace('#', '')}.html"
+            T("Receipt Downloaded"),
+            TF("Receipt saved to Downloads as {filename}",
+               filename=f"Receipt-{receipt_data['receipt_number'].replace('#', '')}.html")
         )
 
     def build_receipt_html(self, receipt_data):
@@ -695,7 +705,7 @@ class SalesHistoryPage(QWidget):
 
         return f"""
         <!DOCTYPE html>
-        <html lang="en">
+        <html lang="{language()}" dir="{'rtl' if is_rtl() else 'ltr'}">
         <head>
             <meta charset="UTF-8">
             <title>{receipt_data['receipt_number']}</title>
@@ -831,29 +841,29 @@ class SalesHistoryPage(QWidget):
         <body>
             <div class="receipt">
                 <div class="topbar">
-                    <div class="invoice-label">Invoice</div>
+                    <div class="invoice-label">{T("Invoice")}</div>
                     <div class="brand-block">
                         <img src="{logo_path}" alt="Pharmacy Logo" class="logo">
                         <h1 class="brand-name">Khalis Dawa</h1>
-                        <p class="brand-subtitle">Pharmacy Receipt</p>
+                        <p class="brand-subtitle">{T("Pharmacy Receipt")}</p>
                         <div class="receipt-no">{receipt_data['receipt_number']}</div>
                     </div>
                     <div style="width: 120px;"></div>
                 </div>
 
                 <div class="meta">
-                    <div><strong>Date:</strong> {receipt_data['date']}</div>
-                    <div><strong>Payment Method:</strong> {receipt_data['payment_method']}</div>
+                    <div><strong>{T("Date")}:</strong> {format_date(receipt_data['date'], include_time=True)}</div>
+                    <div><strong>{T("Payment Method")}:</strong> {T(receipt_data['payment_method'])}</div>
                 </div>
 
                 <table>
                     <thead>
                         <tr>
-                            <th>No.</th>
-                            <th>Item</th>
-                            <th>Quantity</th>
-                            <th>Unit Price</th>
-                            <th>Subtotal</th>
+                            <th>{T("No.")}</th>
+                            <th>{T("Item")}</th>
+                            <th>{T("Quantity")}</th>
+                            <th>{T("Unit Price")}</th>
+                            <th>{T("Subtotal")}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -863,13 +873,13 @@ class SalesHistoryPage(QWidget):
 
                 <div class="total-box">
                     <div class="total-row">
-                        <span>TOTAL</span>
+                        <span>{T("Total").upper()}</span>
                         <span>{receipt_data['total']:g} Ft</span>
                     </div>
                 </div>
 
                 <div class="thank-you">
-                    Thank you for shopping with Khalis Dawa.
+                    {T("Thank you for shopping with Khalis Dawa.")}
                 </div>
 
                 <div class="footer">

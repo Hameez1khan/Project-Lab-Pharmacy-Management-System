@@ -1,6 +1,6 @@
 from pathlib import Path
-from PyQt6.QtGui import QColor, QFont, QPixmap
-from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPixmap
+from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -13,13 +13,17 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from i18n import T
+from i18n import T, format_date, format_money
 
 from database.db import (
     get_dashboard_stats,
     get_expiring_soon,
     get_low_stock_products,
 )
+try:
+    from database.db import get_dashboard_sales_trend
+except ImportError:
+    get_dashboard_sales_trend = None
 from ui_theme import (
     BORDER,
     BORDER_SOFT,
@@ -38,6 +42,67 @@ from ui_theme import (
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 ICON_DIR = BASE_DIR / "assets" / "icons"
+
+
+class NetSalesChart(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.points = []
+        self.setMinimumHeight(230)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def set_points(self, points):
+        self.points = list(points or [])
+        self.update()
+
+    def paintEvent(self, _event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillRect(self.rect(), QColor("#ffffff"))
+        bounds = QRectF(54, 20, max(1, self.width() - 78), max(1, self.height() - 60))
+        values = [max(0.0, float(point[1] or 0)) for point in self.points]
+        if not values or max(values) <= 0:
+            painter.setPen(QColor("#64748b"))
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, T("No sales activity in the last 30 days"))
+            return
+
+        high = max(values)
+        painter.setPen(QPen(QColor("#e2e8f0"), 1))
+        for step in range(5):
+            y = bounds.bottom() - bounds.height() * step / 4
+            painter.drawLine(QPointF(bounds.left(), y), QPointF(bounds.right(), y))
+            painter.setPen(QColor("#64748b"))
+            painter.drawText(QRectF(0, y - 9, 48, 18), Qt.AlignmentFlag.AlignRight, f"{high * step / 4:,.0f}")
+            painter.setPen(QPen(QColor("#e2e8f0"), 1))
+
+        width = bounds.width() / max(1, len(values) - 1)
+        path = QPainterPath()
+        area = QPainterPath()
+        coordinates = []
+        for index, value in enumerate(values):
+            point = QPointF(bounds.left() + index * width, bounds.bottom() - (value / high) * bounds.height())
+            coordinates.append(point)
+            path.moveTo(point) if index == 0 else path.lineTo(point)
+        area.moveTo(bounds.left(), bounds.bottom())
+        area.lineTo(coordinates[0])
+        for point in coordinates[1:]:
+            area.lineTo(point)
+        area.lineTo(bounds.right(), bounds.bottom())
+        area.closeSubpath()
+        painter.fillPath(area, QColor(219, 234, 254, 150))
+        painter.setPen(QPen(QColor("#2563eb"), 3))
+        painter.drawPath(path)
+        painter.setBrush(QColor("#2563eb"))
+        painter.setPen(Qt.PenStyle.NoPen)
+        for point in coordinates:
+            painter.drawEllipse(point, 3.5, 3.5)
+
+        painter.setPen(QColor("#64748b"))
+        for index in sorted({0, len(self.points) // 2, len(self.points) - 1}):
+            x = bounds.left() + index * width
+            label_left = min(max(x - 45, bounds.left()), bounds.right() - 90)
+            painter.drawText(QRectF(label_left, bounds.bottom() + 8, 90, 20),
+                             Qt.AlignmentFlag.AlignCenter, format_date(self.points[index][0]))
 
 
 class DashboardPage(QWidget):
@@ -92,11 +157,13 @@ class DashboardPage(QWidget):
         """)
 
         content = QWidget()
+        content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        content.setMinimumWidth(0)
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(30, 26, 30, 28)
         main_layout.setSpacing(22)
 
-        title = QLabel("Dashboard")
+        title = QLabel(T("Dashboard"))
         title.setStyleSheet("""
             QLabel {
                 color: #0f172a;
@@ -107,7 +174,7 @@ class DashboardPage(QWidget):
             }
         """)
 
-        subtitle = QLabel("Home Page")
+        subtitle = QLabel(T("Home Page"))
         subtitle.setStyleSheet("""
             QLabel {
                 color: #64748b;
@@ -153,6 +220,17 @@ class DashboardPage(QWidget):
 
         main_layout.addLayout(self.cards_layout)
 
+        chart_panel = QFrame()
+        chart_panel.setStyleSheet(surface_card_style())
+        chart_layout = QVBoxLayout(chart_panel)
+        chart_layout.setContentsMargins(22, 18, 22, 18)
+        chart_title = QLabel(T("Daily net sales - last 30 days"))
+        chart_title.setStyleSheet("color:#0f172a;font-size:14px;font-weight:800;background:transparent")
+        self.sales_chart = NetSalesChart()
+        chart_layout.addWidget(chart_title)
+        chart_layout.addWidget(self.sales_chart)
+        main_layout.addWidget(chart_panel)
+
         bottom_layout = QHBoxLayout()
         bottom_layout.setSpacing(18)
 
@@ -160,14 +238,14 @@ class DashboardPage(QWidget):
         self.expiry_list = QListWidget()
 
         recent_panel = self.create_list_panel(
-            title="Low Stock Products",
+            title=T("Low Stock Products"),
             action_symbol="!",
             list_widget=self.low_stock_list,
             warning=True,
         )
 
         expiry_panel = self.create_list_panel(
-            title="Batches expiring within 30 days",
+            title=T("Batches expiring within 30 days"),
             action_symbol="!",
             list_widget=self.expiry_list,
             warning=True,
@@ -285,7 +363,7 @@ class DashboardPage(QWidget):
 
         header = QHBoxLayout()
 
-        title_label = QLabel(title)
+        title_label = QLabel(T(title))
         title_label.setStyleSheet(f"""
             QLabel {{
                 color: #0f172a;
@@ -382,7 +460,15 @@ class DashboardPage(QWidget):
         self.card_values["Low Stock"].setText(str(low_stock))
         amount = f"{revenue:,.2f}".rstrip("0").rstrip(".")
         self.card_values["Revenue"].setText(f"{amount} Ft")
-        self.card_values["Revenue"].setToolTip("All-time sales minus refunds")
+        self.card_values["Revenue"].setToolTip(T("All-time sales minus refunds"))
+
+        trend = []
+        if get_dashboard_sales_trend is not None:
+            try:
+                trend = get_dashboard_sales_trend(days=30)
+            except Exception:
+                trend = []
+        self.sales_chart.set_points(trend)
 
         self.refresh_low_stock_products()
         self.refresh_expiring_soon()
@@ -392,7 +478,7 @@ class DashboardPage(QWidget):
         low_stock_products = get_low_stock_products()
 
         if not low_stock_products:
-            self.add_empty_item(self.low_stock_list, "No low stock products")
+            self.add_empty_item(self.low_stock_list, T("No low stock products"))
             return
 
         header = QListWidgetItem()
@@ -400,7 +486,7 @@ class DashboardPage(QWidget):
         header_item = self.low_stock_list.item(0)
         header_item.setFlags(header_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
         header_widget = self._make_dashboard_table_header(
-            ["Product", "Available", "Min Required"],
+            [T("Product"), T("Available"), T("Min Required")],
             [5, 2, 3],
         )
         header_item.setSizeHint(header_widget.sizeHint())
@@ -421,7 +507,7 @@ class DashboardPage(QWidget):
         expiring = get_expiring_soon()
 
         if not expiring:
-            self.add_empty_item(self.expiry_list, "No batches expiring soon")
+            self.add_empty_item(self.expiry_list, T("No batches expiring soon"))
             return
 
         header = QListWidgetItem()
@@ -429,7 +515,7 @@ class DashboardPage(QWidget):
         header_item = self.expiry_list.item(0)
         header_item.setFlags(header_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
         header_widget = self._make_dashboard_table_header(
-            ["Product", "Batch", "Expiry Date"],
+            [T("Product"), T("Batch"), T("Expiry Date")],
             [5, 3, 3],
         )
         header_item.setSizeHint(header_widget.sizeHint())
@@ -470,7 +556,7 @@ class DashboardPage(QWidget):
         layout.setVerticalSpacing(0)
 
         for index, text in enumerate(labels):
-            label = QLabel(text.upper())
+            label = QLabel(T(text).upper())
             label.setStyleSheet("""
                 QLabel {
                     color: #64748b;
@@ -569,7 +655,7 @@ class DashboardPage(QWidget):
 
         batch_badge = self._make_value_badge(batch, bg="#eff6ff", fg="#2563eb")
 
-        expiry_label = QLabel(expiry)
+        expiry_label = QLabel(format_date(expiry))
         expiry_label.setStyleSheet("""
             QLabel {
                 color: #475569;

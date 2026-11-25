@@ -1,5 +1,4 @@
 import sys
-from datetime import datetime
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -24,7 +23,7 @@ from pages.product import ProductPage
 from pages.prescriptions import PrescriptionsPage
 from pages.audit_logs import AuditLogsPage
 from pages.reports import ReportsPage
-from i18n import T
+from i18n import T, format_current_date, is_rtl
 from ui_theme import (
     BORDER,
     CANVAS,
@@ -247,6 +246,7 @@ class MainWindow(QWidget):
         return button
 
     def sidebar_button_style(self, active=False, danger=False):
+        text_alignment = "right" if is_rtl() else "left"
         if active:
             return f"""
                 QPushButton {{
@@ -255,7 +255,7 @@ class MainWindow(QWidget):
                     border: 1px solid {self.role_style['active_border']};
                     border-radius: 10px;
                     padding: 10px 12px;
-                    text-align: left;
+                    text-align: {text_alignment};
                     font-size: 13px;
                     font-weight: 700;
                 }}
@@ -310,7 +310,7 @@ class MainWindow(QWidget):
                 background-color: transparent;
                 color: #475569;
             }
-        """
+        """.replace("text-align: left", f"text-align: {text_alignment}")
 
     def create_top_header(self):
         header = QWidget()
@@ -321,7 +321,7 @@ class MainWindow(QWidget):
         layout.setContentsMargins(20, 0, 24, 0)
         layout.setSpacing(14)
 
-        date_label = QLabel(datetime.now().strftime("%A, %B %d, %Y"))
+        date_label = QLabel(format_current_date())
         date_label.setStyleSheet("""
             QLabel {
                 color: #111827;
@@ -331,7 +331,7 @@ class MainWindow(QWidget):
             }
         """)
 
-        user_chip = QLabel(self.current_user.get("username", "").strip() or "User")
+        user_chip = QLabel(self.current_user.get("username", "").strip() or T("User"))
         user_chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
         user_chip.setStyleSheet(f"""
             QLabel {{
@@ -433,8 +433,8 @@ class MainWindow(QWidget):
     def logout(self):
         confirm = QMessageBox.question(
             self,
-            "Confirm Logout",
-            "Are you sure you want to logout?",
+            T("Confirm logout"),
+            T("Are you sure you want to log out?"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )

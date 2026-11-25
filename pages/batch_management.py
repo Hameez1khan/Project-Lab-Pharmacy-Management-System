@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from PyQt6.QtCore import Qt
-from i18n import T
+from i18n import T, TF, force_ltr, format_date, format_money
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -57,7 +57,7 @@ class BatchFormDialog(QDialog):
         super().__init__(parent)
         self.batch_row = batch_row
 
-        self.setWindowTitle("Add Batch" if batch_row is None else "Edit Batch")
+        self.setWindowTitle(T("Add Batch" if batch_row is None else "Edit Batch"))
         self.setModal(True)
         self.setFixedWidth(420)
 
@@ -120,8 +120,8 @@ class BatchFormDialog(QDialog):
         button_row = QHBoxLayout()
         button_row.addStretch()
 
-        cancel_btn = QPushButton("Cancel")
-        save_btn = QPushButton("Save")
+        cancel_btn = QPushButton(T("Cancel"))
+        save_btn = QPushButton(T("Save"))
 
         cancel_btn.clicked.connect(self.reject)
         save_btn.clicked.connect(self.accept)
@@ -169,7 +169,7 @@ class BatchManagementPage(QWidget):
         header_text = QVBoxLayout()
         header_text.setSpacing(4)
 
-        title = QLabel("Batch-based Inventory Management")
+        title = QLabel(T("Batch-based Inventory Management"))
         title.setStyleSheet("""
             QLabel {
                 color: #0f172a;
@@ -180,7 +180,7 @@ class BatchManagementPage(QWidget):
             }
         """)
 
-        subtitle = QLabel("Product Batch Manager")
+        subtitle = QLabel(T("Product Batch Manager"))
         subtitle.setStyleSheet("""
             QLabel {
                 color: #64748b;
@@ -193,7 +193,7 @@ class BatchManagementPage(QWidget):
         header_text.addWidget(title)
         header_text.addWidget(subtitle)
 
-        add_btn = QPushButton("+ Add Batch")
+        add_btn = QPushButton(T("+ Add Batch"))
         add_btn.setFixedSize(164, 42)
         add_btn.clicked.connect(self.open_add_dialog)
         add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -235,7 +235,7 @@ class BatchManagementPage(QWidget):
         filter_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search medicines...")
+        self.search_input.setPlaceholderText(T("Search medicines..."))
         self.search_input.setFixedHeight(44)
         self.search_input.textChanged.connect(self.refresh_table)
 
@@ -245,7 +245,7 @@ class BatchManagementPage(QWidget):
         self.category_filter.currentTextChanged.connect(self.refresh_table)
 
 
-        self.expired_only_checkbox = QCheckBox("Expired Batches")
+        self.expired_only_checkbox = QCheckBox(T("Expired Batches"))
         self.expired_only_checkbox.stateChanged.connect(self.refresh_table)
         self.expired_only_checkbox.setStyleSheet(checkbox_style(accent="#f59e0b"))
         self.search_input.setStyleSheet("""
@@ -339,15 +339,15 @@ class BatchManagementPage(QWidget):
         self.refresh_table()
 
     def reload_filters(self):
-        current = self.category_filter.currentText()
+        current = self.category_filter.currentData()
 
         self.category_filter.blockSignals(True)
         self.category_filter.clear()
-        self.category_filter.addItem("All Categories")
+        self.category_filter.addItem(T("All Categories"), "")
         for category in get_categories():
-            self.category_filter.addItem(category)
+            self.category_filter.addItem(category, category)
 
-        index = self.category_filter.findText(current)
+        index = self.category_filter.findData(current)
         self.category_filter.setCurrentIndex(index if index >= 0 else 0)
         self.category_filter.blockSignals(False)
 
@@ -376,7 +376,7 @@ class BatchManagementPage(QWidget):
 
         rows = get_batch_rows(
             search_text=self.search_input.text(),
-            category=self.category_filter.currentText(),
+            category=self.category_filter.currentData() or "",
         )
 
         if self.expired_only_checkbox.isChecked():
@@ -384,7 +384,7 @@ class BatchManagementPage(QWidget):
 
 
         if not rows:
-            empty = QLabel("No batches found")
+            empty = QLabel(T("No batches found"))
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
             empty.setMinimumHeight(180)
             empty.setStyleSheet("""
@@ -529,7 +529,7 @@ class BatchManagementPage(QWidget):
             }
         """)
 
-        batch = QLabel(row_data["batch_number"])
+        batch = force_ltr(QLabel(row_data["batch_number"]))
         batch.setAlignment(Qt.AlignmentFlag.AlignCenter)
         batch.setStyleSheet("""
             QLabel {
@@ -544,7 +544,7 @@ class BatchManagementPage(QWidget):
         stock_color = "#fef2f2" if row_data["expired"] or row_data["stock"] <= 0 else "#ecfdf5"
         stock_text_color = "#dc2626" if row_data["expired"] or row_data["stock"] <= 0 else "#16a34a"
 
-        stock = QLabel(f"{row_data['stock']} units")
+        stock = QLabel(TF("{count} units", count=row_data["stock"]))
         stock.setAlignment(Qt.AlignmentFlag.AlignCenter)
         stock.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         stock.setStyleSheet(f"""
@@ -562,10 +562,10 @@ class BatchManagementPage(QWidget):
 
         sell = float(row_data["price"])
         buy = float(row_data["purchase_unit_cost"])
-        cost_label = QLabel(f"{buy:,.2f} Ft")
-        price = QLabel(f"{sell:,.2f} Ft")
-        margin = QLabel(f"{100 * (sell - buy) / sell:.1f}%" if sell > 0 and buy > 0 else "N/A")
-        margin.setToolTip("Gross margin at the current selling price, before discounts")
+        cost_label = force_ltr(QLabel(format_money(buy)), right=True)
+        price = force_ltr(QLabel(format_money(sell)), right=True)
+        margin = force_ltr(QLabel(f"{100 * (sell - buy) / sell:.1f}%" if sell > 0 and buy > 0 else T("N/A")), right=True)
+        margin.setToolTip(T("Gross margin at the current selling price, before discounts"))
         for label in (cost_label, margin):
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             label.setStyleSheet("background:transparent; border:none; color:#334155;")
@@ -580,7 +580,7 @@ class BatchManagementPage(QWidget):
             }
         """)
 
-        expiry_badge = QLabel(expiry_status)
+        expiry_badge = QLabel(T(expiry_status))
         expiry_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         expiry_badge.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         expiry_badge.setStyleSheet(f"""
@@ -596,7 +596,7 @@ class BatchManagementPage(QWidget):
         """)
         expiry_badge.setMinimumHeight(24)
 
-        expiry_date = QLabel(row_data["expiry_date"])
+        expiry_date = force_ltr(QLabel(format_date(row_data["expiry_date"])))
         expiry_date.setAlignment(Qt.AlignmentFlag.AlignCenter)
         expiry_date.setStyleSheet("""
             QLabel {
@@ -643,12 +643,12 @@ class BatchManagementPage(QWidget):
         actions_layout.setContentsMargins(0, 0, 0, 0)
         actions_layout.setSpacing(8)
 
-        edit_btn = QPushButton("Edit")
+        edit_btn = QPushButton(T("Edit"))
         edit_btn.setFixedSize(58, 32)
         edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         edit_btn.clicked.connect(lambda: self.open_edit_dialog(row_data))
 
-        delete_btn = QPushButton("Delete")
+        delete_btn = QPushButton(T("Delete"))
         delete_btn.setFixedSize(72, 32)
         delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         delete_btn.clicked.connect(lambda: self.delete_batch(row_data))
@@ -737,8 +737,8 @@ class BatchManagementPage(QWidget):
         if not product:
             QMessageBox.warning(
                 self,
-                "Invalid Product",
-                "This product does not exist. Please add batches only for existing medicines."
+                T("Invalid Product"),
+                T("This product does not exist. Please add batches only for existing medicines.")
             )
             return
 
@@ -748,7 +748,7 @@ class BatchManagementPage(QWidget):
         )
 
         if not success:
-            QMessageBox.warning(self, "Add Batch Failed", message)
+            QMessageBox.warning(self, T("Add Batch Failed"), T(message))
             return
 
         add_audit_log(
@@ -774,21 +774,21 @@ class BatchManagementPage(QWidget):
         if int(payload["quantity"]) != int(row_data["stock"]):
             from PyQt6.QtWidgets import QInputDialog
             reason, ok = QInputDialog.getText(
-                self, "Stock adjustment",
-                "Reason for changing stock (for example, damage or count correction):"
+                self, T("Stock adjustment"),
+                T("Reason for changing stock (for example, damage or count correction):")
             )
             if not ok:
                 return
             reason = reason.strip()
             if not reason:
-                QMessageBox.warning(self, "Reason required", "Stock was not changed.")
+                QMessageBox.warning(self, T("Reason required"), T("Stock was not changed."))
                 return
 
         if not update_batch_record(
             row_data["batch_id"], payload["quantity"], payload["expiry_date"],
             payload["price"], payload["min_stock_level"], reason=reason,
         ):
-            QMessageBox.warning(self, "Not saved", "This batch no longer exists.")
+            QMessageBox.warning(self, T("Not saved"), T("This batch no longer exists."))
             return
 
         add_audit_log(
@@ -802,8 +802,8 @@ class BatchManagementPage(QWidget):
     def delete_batch(self, row_data):
         confirm = QMessageBox.question(
             self,
-            "Delete Batch",
-            f"Delete batch {row_data['batch_number']} for {row_data['name']}?",
+            T("Delete Batch"),
+            TF("Delete batch {batch} for {name}?", batch=row_data["batch_number"], name=row_data["name"]),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -822,7 +822,7 @@ class BatchManagementPage(QWidget):
     def validate_payload(self, payload):
         required = ["name", "batch_number", "quantity", "expiry_date"]
         if any(not payload[key] for key in required):
-            QMessageBox.warning(self, "Missing Data", "Please fill in every required field.")
+            QMessageBox.warning(self, T("Missing Data"), T("Please fill in every required field."))
             return False
 
         try:
@@ -830,13 +830,13 @@ class BatchManagementPage(QWidget):
             if quantity < 0:
                 raise ValueError
         except ValueError:
-            QMessageBox.warning(self, "Invalid Data", "Quantity must be a valid non-negative number.")
+            QMessageBox.warning(self, T("Invalid Data"), T("Quantity must be a valid non-negative number."))
             return False
 
         try:
             datetime.strptime(payload["expiry_date"], "%Y-%m-%d")
         except ValueError:
-            QMessageBox.warning(self, "Invalid Date", "Expiry date must be in YYYY-MM-DD format.")
+            QMessageBox.warning(self, T("Invalid Date"), T("Expiry date must be in YYYY-MM-DD format."))
             return False
 
         return True

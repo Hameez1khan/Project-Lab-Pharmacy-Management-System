@@ -8,6 +8,7 @@ from database.db import add_audit_log, authenticate_user, register_pharmacist
 from main_window import MainWindow
 from pathlib import Path
 import sys
+from i18n import T
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -76,7 +77,7 @@ class LoginWindow(QWidget):
             }
         """)
 
-        title = QLabel("Log in")
+        title = QLabel(T("Log in"))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setMinimumHeight(64)
         title.setStyleSheet("""
@@ -89,7 +90,7 @@ class LoginWindow(QWidget):
             }
         """)
 
-        subtitle = QLabel("Use your Khalis Dawa account")
+        subtitle = QLabel(T("Use your Khalis Dawa account"))
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         subtitle.setStyleSheet("""
             QLabel {
@@ -101,10 +102,10 @@ class LoginWindow(QWidget):
             }
         """)
 
-        info = QLabel(
+        info = QLabel(T(
             "Staff-only access for administrators and pharmacists. "
             "Choose the account type above, then continue with your credentials."
-        )
+        ))
         info.setWordWrap(True)
         info.setStyleSheet("""
             QLabel {
@@ -119,11 +120,11 @@ class LoginWindow(QWidget):
         mode_row = QHBoxLayout()
         mode_row.setSpacing(12)
 
-        self.admin_mode_btn = QPushButton("Admin")
+        self.admin_mode_btn = QPushButton(T("Admin"))
         self.admin_mode_btn.setFixedHeight(48)
         self.admin_mode_btn.clicked.connect(lambda: self.set_mode("admin"))
 
-        self.pharmacist_mode_btn = QPushButton("Pharmacist")
+        self.pharmacist_mode_btn = QPushButton(T("Pharmacist"))
         self.pharmacist_mode_btn.setFixedHeight(48)
         self.pharmacist_mode_btn.clicked.connect(lambda: self.set_mode("pharmacist"))
 
@@ -131,15 +132,15 @@ class LoginWindow(QWidget):
         mode_row.addWidget(self.pharmacist_mode_btn)
 
         self.username_input = QLineEdit()
-        self.username_input.setPlaceholderText("Username")
+        self.username_input.setPlaceholderText(T("Username"))
         self.username_input.setFixedHeight(58)
 
         self.password_input = QLineEdit()
-        self.password_input.setPlaceholderText("Password")
+        self.password_input.setPlaceholderText(T("Password"))
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_input.setFixedHeight(58)
 
-        helper = QLabel("Switch to Pharmacist mode to create a pharmacist account.")
+        helper = QLabel(T("Switch to Pharmacist mode to create a pharmacist account."))
         helper.setWordWrap(True)
         helper.setStyleSheet("""
             QLabel {
@@ -150,12 +151,12 @@ class LoginWindow(QWidget):
             }
         """)
 
-        self.login_button = QPushButton("Proceed")
+        self.login_button = QPushButton(T("Proceed"))
         self.login_button.setFixedHeight(52)
         self.login_button.setFixedWidth(168)
         self.login_button.clicked.connect(self.login)
 
-        self.register_button = QPushButton("Create account")
+        self.register_button = QPushButton(T("Create account"))
         self.register_button.setFixedHeight(52)
         self.register_button.clicked.connect(self.register_user)
 
@@ -292,15 +293,15 @@ class LoginWindow(QWidget):
         user = authenticate_user(username, password)
 
         if user is None:
-            QMessageBox.critical(self, "Error", "Invalid username or password")
+            QMessageBox.critical(self, T("Error"), T("Invalid username or password"))
             return
 
         if self.current_mode == "admin" and user["role"] != "admin":
-            QMessageBox.critical(self, "Error", "Please use Pharmacist mode for pharmacist accounts")
+            QMessageBox.critical(self, T("Error"), T("Please use Pharmacist mode for pharmacist accounts"))
             return
 
         if self.current_mode == "pharmacist" and user["role"] != "pharmacist":
-            QMessageBox.critical(self, "Error", "Please use Admin mode for admin account")
+            QMessageBox.critical(self, T("Error"), T("Please use Admin mode for admin account"))
             return
 
         add_audit_log(
@@ -323,10 +324,10 @@ class LoginWindow(QWidget):
         success, message = register_pharmacist(username, password)
 
         if not success:
-            QMessageBox.critical(self, "Registration Failed", message)
+            QMessageBox.critical(self, T("Registration Failed"), T(message))
             return
 
-        QMessageBox.information(self, "Registration", message)
+        QMessageBox.information(self, T("Registration"), T(message))
         self.username_input.clear()
         self.password_input.clear()
 

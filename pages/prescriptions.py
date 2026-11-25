@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 from pathlib import Path
 
 from database.db import get_prescription_rows
+from i18n import T, TF, force_ltr, format_date, is_rtl, language
 from ui_theme import (
     BLUE,
     filter_card_style,
@@ -49,7 +50,7 @@ class PrescriptionsPage(QWidget):
         header_text = QVBoxLayout()
         header_text.setSpacing(4)
 
-        title = QLabel("Prescriptions")
+        title = QLabel(T("Prescriptions"))
         title.setStyleSheet("""
             QLabel {
                 color: #0f172a;
@@ -60,7 +61,7 @@ class PrescriptionsPage(QWidget):
             }
         """)
 
-        subtitle = QLabel("Track sensitive medicine sales")
+        subtitle = QLabel(T("Track sensitive medicine sales"))
         subtitle.setStyleSheet("""
             QLabel {
                 color: #64748b;
@@ -93,7 +94,7 @@ class PrescriptionsPage(QWidget):
         filter_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search by SSN, customer, or medicine...")
+        self.search_input.setPlaceholderText(T("Search by SSN, customer, or medicine..."))
         self.search_input.setFixedHeight(44)
         self.search_input.textChanged.connect(self.refresh_table)
         self.search_input.setStyleSheet("""
@@ -162,7 +163,7 @@ class PrescriptionsPage(QWidget):
         rows = get_prescription_rows(self.search_input.text())
 
         if not rows:
-            empty = QLabel("No prescription-tracked sales found")
+            empty = QLabel(T("No prescription-tracked sales found"))
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
             empty.setMinimumHeight(180)
             empty.setStyleSheet("""
@@ -193,7 +194,7 @@ class PrescriptionsPage(QWidget):
         stretches = [3, 3, 4, 2, 3, 2]
 
         for index, text in enumerate(labels):
-            label = QLabel(text)
+            label = QLabel(T(text))
             label.setStyleSheet("""
                 QLabel {
                     color: #7b8798;
@@ -227,11 +228,11 @@ class PrescriptionsPage(QWidget):
         layout.setHorizontalSpacing(18)
         layout.setVerticalSpacing(0)
 
-        ssn = QLabel(row_data["customer_ssn"])
+        ssn = force_ltr(QLabel(row_data["customer_ssn"]))
         customer_name = QLabel(row_data["customer_name"])
         medicine = QLabel(row_data["medicine_name"])
         amount = QLabel(str(row_data["amount"]))
-        created_at = QLabel(row_data["created_at"])
+        created_at = force_ltr(QLabel(format_date(row_data["created_at"], include_time=True)))
 
         ssn.setStyleSheet("""
             QLabel {
@@ -289,7 +290,7 @@ class PrescriptionsPage(QWidget):
             }
         """)
 
-        report_btn = QPushButton("Report")
+        report_btn = QPushButton(T("Report"))
         report_btn.setFixedSize(80, 28)
         report_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         report_btn.clicked.connect(lambda: self.download_report(row_data))
@@ -353,8 +354,8 @@ class PrescriptionsPage(QWidget):
 
         QMessageBox.information(
             self,
-            "Prescription Report Downloaded",
-            f"Prescription report saved to Downloads as {file_name}"
+            T("Prescription Report Downloaded"),
+            TF("Prescription report saved to Downloads as {filename}", filename=file_name)
         )
 
     def build_prescription_report_html(self, row_data):
@@ -363,10 +364,10 @@ class PrescriptionsPage(QWidget):
 
         return f"""
         <!DOCTYPE html>
-        <html lang="en">
+        <html lang="{language()}" dir="{'rtl' if is_rtl() else 'ltr'}">
         <head>
             <meta charset="UTF-8">
-            <title>Prescription Report</title>
+            <title>{T("Prescription Report")}</title>
             <style>
                 body {{
                     font-family: Arial, sans-serif;
@@ -474,22 +475,22 @@ class PrescriptionsPage(QWidget):
                         <div class="brand-block">
                             <img src="{logo_path}" alt="Pharmacy Logo" class="logo">
                             <h1 class="brand-name">Khalis Dawa</h1>
-                            <p class="subtitle">Prescription Report</p>
+                            <p class="subtitle">{T("Prescription Report")}</p>
                         </div>
                         <div style="width: 120px;"></div>
                     </div>
                 </div>
 
                 <div class="details">
-                    <div><strong>Customer Name:</strong> {row_data['customer_name']}</div>
-                    <div><strong>Date of Purchase:</strong> {row_data['created_at']}</div>
+                    <div><strong>{T("Customer Name")}:</strong> {row_data['customer_name']}</div>
+                    <div><strong>{T("Date of Purchase")}:</strong> {format_date(row_data['created_at'], include_time=True)}</div>
                 </div>
 
                 <table class="summary-table">
                     <thead>
                         <tr>
-                            <th>Medicine</th>
-                            <th>Quantity</th>
+                            <th>{T("Medicine")}</th>
+                            <th>{T("Quantity")}</th>
                         </tr>
                     </thead>
                     <tbody>

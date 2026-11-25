@@ -19,6 +19,7 @@ from database.db import (
     get_return_report_data,
     get_returns_history,
 )
+from i18n import T, TF, force_ltr, format_date, format_money, is_rtl, language
 from ui_theme import (
     PRIMARY,
     filter_card_style,
@@ -53,7 +54,7 @@ class ReturnedItemsPage(QWidget):
         header_layout = QVBoxLayout()
         header_layout.setSpacing(4)
 
-        title = QLabel("Returned Items")
+        title = QLabel(T("Returned Items"))
         title.setStyleSheet("""
             QLabel {
                 color: #0f172a;
@@ -64,7 +65,7 @@ class ReturnedItemsPage(QWidget):
             }
         """)
 
-        subtitle = QLabel("Track completed returns and refund documents")
+        subtitle = QLabel(T("Track completed returns and refund documents"))
         subtitle.setStyleSheet("""
             QLabel {
                 color: #64748b;
@@ -93,7 +94,7 @@ class ReturnedItemsPage(QWidget):
         filter_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search by return ID or sale receipt...")
+        self.search_input.setPlaceholderText(T("Search by return ID or sale receipt..."))
         self.search_input.setFixedHeight(44)
         self.search_input.textChanged.connect(self.refresh_table)
         self.search_input.setStyleSheet("""
@@ -161,7 +162,7 @@ class ReturnedItemsPage(QWidget):
         rows = get_returns_history(self.search_input.text())
 
         if not rows:
-            empty = QLabel("No returned items found")
+            empty = QLabel(T("No returned items found"))
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
             empty.setMinimumHeight(180)
             empty.setStyleSheet("""
@@ -202,7 +203,7 @@ class ReturnedItemsPage(QWidget):
             stretches.append(2)
 
         for index, text in enumerate(labels):
-            label = QLabel(text)
+            label = QLabel(T(text))
             label.setStyleSheet("""
                 QLabel {
                     color: #7b8798;
@@ -242,11 +243,11 @@ class ReturnedItemsPage(QWidget):
         if self.is_admin:
             stretches.append(2)
 
-        receipt_id = QLabel(row_data["return_receipt_number"])
+        receipt_id = force_ltr(QLabel(row_data["return_receipt_number"]))
         items = QLabel(str(row_data["total_items"]))
-        date = QLabel(row_data["date"])
-        refund_amount = QLabel(f"{row_data['refund_amount']:g} Ft")
-        source_sale = QLabel(row_data["source_receipt_number"])
+        date = force_ltr(QLabel(format_date(row_data["date"], include_time=True)))
+        refund_amount = force_ltr(QLabel(format_money(row_data["refund_amount"], 0)), right=True)
+        source_sale = force_ltr(QLabel(row_data["source_receipt_number"]))
 
         receipt_id.setStyleSheet("""
             QLabel {
@@ -296,7 +297,7 @@ class ReturnedItemsPage(QWidget):
             }
         """)
 
-        report_btn = QPushButton("Download")
+        report_btn = QPushButton(T("Download"))
         report_btn.setFixedSize(92, 32)
         report_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         report_btn.clicked.connect(lambda: self.download_return_report(row_data["id"]))
@@ -316,7 +317,7 @@ class ReturnedItemsPage(QWidget):
             }
         """)
 
-        action_btn = QPushButton("Delete")
+        action_btn = QPushButton(T("Delete"))
         action_btn.setFixedSize(84, 32)
         action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         action_btn.clicked.connect(
@@ -382,13 +383,13 @@ class ReturnedItemsPage(QWidget):
 
     def delete_return(self, return_id, return_receipt_number):
         if not self.is_admin:
-            QMessageBox.warning(self, "Access Denied", "Only administrators can delete returned items.")
+            QMessageBox.warning(self, T("Access Denied"), T("Only administrators can delete returned items."))
             return
 
         confirm = QMessageBox.question(
             self,
-            "Delete Return",
-            f"Are you sure you want to delete return {return_receipt_number}?",
+            T("Delete Return"),
+            TF("Are you sure you want to delete return {receipt}?", receipt=return_receipt_number),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -403,17 +404,17 @@ class ReturnedItemsPage(QWidget):
         )
 
         if not success:
-            QMessageBox.warning(self, "Delete Failed", message)
+            QMessageBox.warning(self, T("Delete Failed"), T(message))
             return
 
-        QMessageBox.information(self, "Return Deleted", message)
+        QMessageBox.information(self, T("Return Deleted"), T(message))
         self.refresh_table()
 
     def download_return_report(self, return_id):
         report_data = get_return_report_data(return_id)
 
         if not report_data:
-            QMessageBox.warning(self, "Return Report Error", "Return report data could not be found.")
+            QMessageBox.warning(self, T("Return Report Error"), T("Return report data could not be found."))
             return
 
         downloads_dir = Path.home() / "Downloads"
@@ -425,8 +426,9 @@ class ReturnedItemsPage(QWidget):
 
         QMessageBox.information(
             self,
-            "Return Report Downloaded",
-            f"Return report saved to Downloads as Return-{report_data['return_receipt_number'].replace('#', '')}.html"
+            T("Return Report Downloaded"),
+            TF("Return report saved to Downloads as {filename}",
+               filename=f"Return-{report_data['return_receipt_number'].replace('#', '')}.html")
         )
 
     def build_return_report_html(self, report_data):
@@ -446,7 +448,7 @@ class ReturnedItemsPage(QWidget):
 
         return f"""
         <!DOCTYPE html>
-        <html lang="en">
+        <html lang="{language()}" dir="{'rtl' if is_rtl() else 'ltr'}">
         <head>
             <meta charset="UTF-8">
             <title>{report_data['return_receipt_number']}</title>
@@ -593,32 +595,32 @@ class ReturnedItemsPage(QWidget):
         <body>
             <div class="receipt">
                 <div class="topbar">
-                    <div class="invoice-label">Return</div>
+                    <div class="invoice-label">{T("Return")}</div>
                     <div class="brand-block">
                         <img src="{logo_path}" alt="Pharmacy Logo" class="logo">
                         <h1 class="brand-name">Khalis Dawa</h1>
-                        <p class="brand-subtitle">Returned Items Report</p>
+                        <p class="brand-subtitle">{T("Returned Items Report")}</p>
                         <div class="receipt-no">{report_data['return_receipt_number']}</div>
                     </div>
                     <div style="width: 120px;"></div>
                 </div>
 
                 <div class="meta">
-                    <div><strong>Date Returned:</strong> {report_data['return_date']}</div>
-                    <div><strong>Source Sale:</strong> {report_data['source_receipt_number']}</div>
-                    <div><strong>Original Sale Date:</strong> {report_data['source_sale_date']}</div>
-                    <div><strong>Processed By:</strong> {report_data['processed_by']}</div>
-                    <div><strong>Payment Method:</strong> {report_data['payment_method']}</div>
+                    <div><strong>{T("Date returned")}:</strong> {format_date(report_data['return_date'], include_time=True)}</div>
+                    <div><strong>{T("Source sale")}:</strong> {report_data['source_receipt_number']}</div>
+                    <div><strong>{T("Original Sale Date")}:</strong> {format_date(report_data['source_sale_date'], include_time=True)}</div>
+                    <div><strong>{T("Processed By")}:</strong> {report_data['processed_by']}</div>
+                    <div><strong>{T("Payment Method")}:</strong> {T(report_data['payment_method'])}</div>
                 </div>
 
                 <table>
                     <thead>
                         <tr>
-                            <th>No.</th>
-                            <th>Item</th>
-                            <th>Quantity</th>
-                            <th>Unit Price</th>
-                            <th>Subtotal</th>
+                            <th>{T("No.")}</th>
+                            <th>{T("Item")}</th>
+                            <th>{T("Quantity")}</th>
+                            <th>{T("Unit Price")}</th>
+                            <th>{T("Subtotal")}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -627,13 +629,13 @@ class ReturnedItemsPage(QWidget):
                 </table>
 
                 <div class="summary-card">
-                    <div><strong>Total Items Returned:</strong> {report_data['total_items']}</div>
-                    <div><strong>Original Sale Receipt:</strong> {report_data['source_receipt_number']}</div>
+                    <div><strong>{T("Total Items Returned")}:</strong> {report_data['total_items']}</div>
+                    <div><strong>{T("Original Sale Receipt")}:</strong> {report_data['source_receipt_number']}</div>
                 </div>
 
                 <div class="total-box">
                     <div class="total-row">
-                        <span>REFUND TOTAL</span>
+                        <span>{T("Refund total").upper()}</span>
                         <span>{report_data['refund_total']:g} Ft</span>
                     </div>
                 </div>

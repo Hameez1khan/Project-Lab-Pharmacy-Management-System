@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QFrame, QSizePolicy, QComboBox
 )
 from database.db import add_audit_log, get_connection, get_password_manageable_users
+from i18n import T, TF
 
 from pathlib import Path
 from PyQt6.QtGui import QIcon
@@ -44,10 +45,10 @@ class SettingsPage(QWidget):
         title_box = QVBoxLayout()
         title_box.setSpacing(6)
 
-        title = QLabel("Settings & profile")
+        title = QLabel(T("Settings & profile"))
         title.setStyleSheet(page_title_style().replace("30px", "28px"))
 
-        subtitle = QLabel("Manage account passwords and access")
+        subtitle = QLabel(T("Manage account passwords and access"))
         subtitle.setStyleSheet(page_subtitle_style())
 
         title_box.addWidget(title)
@@ -90,7 +91,7 @@ class SettingsPage(QWidget):
             }
         """)
 
-        header_text = QLabel("Password Management")
+        header_text = QLabel(T("Password Management"))
         header_text.setStyleSheet("""
             QLabel {
                 font-size: 17px;
@@ -127,7 +128,7 @@ class SettingsPage(QWidget):
         target_user_box = QVBoxLayout()
         target_user_box.setSpacing(10)
 
-        target_user_label = QLabel("Select User")
+        target_user_label = QLabel(T("Select User"))
         target_user_label.setStyleSheet("""
             QLabel {
                 font-size: 14px;
@@ -149,18 +150,18 @@ class SettingsPage(QWidget):
         form_layout.addLayout(target_user_box)
 
         self.current_password, self.current_toggle = self.create_password_field(
-            "Admin Current Password",
-            "Enter admin current password"
+            T("Admin Current Password"),
+            T("Enter admin current password")
         )
 
         self.new_password, self.new_toggle = self.create_password_field(
-            "New Password",
-            "Enter new password"
+            T("New Password"),
+            T("Enter new password")
         )
 
         self.confirm_password, self.confirm_toggle = self.create_password_field(
-            "Confirm New Password",
-            "Confirm new password"
+            T("Confirm New Password"),
+            T("Confirm new password")
         )
 
         form_layout.addLayout(self.current_password["layout"])
@@ -188,7 +189,7 @@ class SettingsPage(QWidget):
         button_layout = QHBoxLayout()
         button_layout.addStretch()
 
-        self.update_btn = QPushButton("Update Password")
+        self.update_btn = QPushButton(T("Update Password"))
         self.update_btn.setFixedSize(168, 44)
         self.update_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.update_btn.setStyleSheet(primary_button_style(color=PRIMARY, hover="#0b5f5a"))
@@ -312,15 +313,15 @@ class SettingsPage(QWidget):
         confirm = self.confirm_password["field"].text()
 
         if not current or not new or not confirm:
-            self.show_message("Please fill in all fields", False)
+            self.show_message(T("Please fill in all fields"), False)
             return
 
         if new != confirm:
-            self.show_message("New passwords do not match", False)
+            self.show_message(T("New passwords do not match"), False)
             return
 
         if len(new) < 4:
-            self.show_message("Password must be at least 4 characters long", False)
+            self.show_message(T("Password must be at least 4 characters long"), False)
             return
 
         conn = get_connection()
@@ -331,16 +332,16 @@ class SettingsPage(QWidget):
 
         if not result:
             conn.close()
-            self.show_message("Selected user account not found", False)
+            self.show_message(T("Selected user account not found"), False)
             return
 
         if current != result[0]:
             conn.close()
             selected_role = self.get_selected_user_role()
             if selected_role == "admin":
-                self.show_message("Admin current password is incorrect", False)
+                self.show_message(T("Admin current password is incorrect"), False)
             else:
-                self.show_message("Pharmacist current password is incorrect", False)
+                self.show_message(T("Pharmacist current password is incorrect"), False)
             return
 
         cursor.execute(
@@ -359,7 +360,7 @@ class SettingsPage(QWidget):
         conn.commit()
         conn.close()
 
-        self.show_message(f"Password updated successfully for {target_user}.", True)
+        self.show_message(TF("Password updated successfully for {username}.", username=target_user), True)
 
         self.current_password["field"].clear()
         self.new_password["field"].clear()
@@ -391,9 +392,9 @@ class SettingsPage(QWidget):
         selected_role = self.get_selected_user_role()
 
         if selected_role == "admin":
-            self.current_password["label"].setText("Admin Current Password")
-            self.current_password["field"].setPlaceholderText("Enter admin current password")
+            self.current_password["label"].setText(T("Admin Current Password"))
+            self.current_password["field"].setPlaceholderText(T("Enter admin current password"))
         else:
-            self.current_password["label"].setText("Pharmacist Current Password")
-            self.current_password["field"].setPlaceholderText("Enter pharmacist current password")
+            self.current_password["label"].setText(T("Pharmacist Current Password"))
+            self.current_password["field"].setPlaceholderText(T("Enter pharmacist current password"))
 

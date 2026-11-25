@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 )
 
 from database.db import get_audit_log_rows
+from i18n import T, format_date
 from ui_theme import (
     filter_card_style,
     header_caps_style,
@@ -40,7 +41,7 @@ class AuditLogsPage(QWidget):
         header_text = QVBoxLayout()
         header_text.setSpacing(4)
 
-        title = QLabel("Audit Logs")
+        title = QLabel(T("Audit Logs"))
         title.setStyleSheet("""
             QLabel {
                 color: #0f172a;
@@ -51,7 +52,7 @@ class AuditLogsPage(QWidget):
             }
         """)
 
-        subtitle = QLabel("Track actions performed by admins and pharmacists")
+        subtitle = QLabel(T("Track actions performed by admins and pharmacists"))
         subtitle.setStyleSheet("""
             QLabel {
                 color: #64748b;
@@ -83,7 +84,7 @@ class AuditLogsPage(QWidget):
         filter_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search by username, role, or action...")
+        self.search_input.setPlaceholderText(T("Search by username, role, or action..."))
         self.search_input.setFixedHeight(44)
         self.search_input.textChanged.connect(self.refresh_table)
         self.search_input.setStyleSheet("""
@@ -151,7 +152,7 @@ class AuditLogsPage(QWidget):
         rows = get_audit_log_rows(self.search_input.text())
 
         if not rows:
-            empty = QLabel("No audit logs found")
+            empty = QLabel(T("No audit logs found"))
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
             empty.setMinimumHeight(180)
             empty.setStyleSheet("""
@@ -181,7 +182,7 @@ class AuditLogsPage(QWidget):
         stretches = [2, 2, 6, 3]
 
         for index, text in enumerate(labels):
-            label = QLabel(text)
+            label = QLabel(T(text))
             label.setStyleSheet("""
                 QLabel {
                     color: #7b8798;
@@ -215,13 +216,13 @@ class AuditLogsPage(QWidget):
         layout.setVerticalSpacing(0)
 
         username = QLabel(row_data["username"])
-        role = QLabel(row_data["role"] or "-")
-        description = QLabel(row_data["description"])
+        role = QLabel(T(row_data["role"].title()) if row_data["role"] else "-")
+        description = QLabel(T(row_data["description"]))
         description.setTextFormat(Qt.TextFormat.PlainText)
         if row_data.get("details"):
             from html import escape
             description.setToolTip("<pre>" + escape(row_data["details"]) + "</pre>")
-        created_at = QLabel(row_data["created_at"])
+        created_at = QLabel(format_date(row_data["created_at"], include_time=True))
 
         username.setStyleSheet("""
             QLabel {
