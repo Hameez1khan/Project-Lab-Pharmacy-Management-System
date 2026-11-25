@@ -1,3 +1,6 @@
+import base64
+import hashlib
+import hmac
 import sqlite3
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -12,16 +15,67 @@ if getattr(sys, "frozen", False):
 else:
     DB_PATH = Path(__file__).resolve().parent / "pharmacy.db"
 RETURN_WINDOW_DAYS = 3
+DB_PATH_ENV = "KHALIS_DAWA_DB_PATH"
+DB_BUSY_TIMEOUT_MS = 5000
+PASSWORD_SCHEME = "pbkdf2_sha256"
+PASSWORD_VERSION = "v1"
+PASSWORD_ITERATIONS = 600_000
 
 
 from database import inventory_audit
 
 
+def get_database_path():
+    """Return the configured database without changing the production default."""
+    override = os.environ.get(DB_PATH_ENV)
+    return Path(override).expanduser().resolve() if override else DB_PATH
+
+
 def get_connection(reason="Inventory change"):
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(get_database_path(), timeout=DB_BUSY_TIMEOUT_MS / 1000)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute(f"PRAGMA busy_timeout = {DB_BUSY_TIMEOUT_MS}")
     inventory_audit.bind(conn, reason)
     return conn
+
+
+def hash_password(password, *, iterations=PASSWORD_ITERATIONS):
+    password = str(password or "").strip()
+    if not password:
+        raise ValueError("Password is required.")
+    salt = os.urandom(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+    return "$".join((
+        PASSWORD_SCHEME,
+        PASSWORD_VERSION,
+        str(iterations),
+        base64.urlsafe_b64encode(salt).decode("ascii"),
+        base64.urlsafe_b64encode(digest).decode("ascii"),
+    ))
+
+
+def is_password_hash(value):
+    return str(value or "").startswith(f"{PASSWORD_SCHEME}${PASSWORD_VERSION}$")
+
+
+def verify_password(password, stored_value):
+    candidate = str(password or "").strip()
+    stored = str(stored_value or "")
+    if not is_password_hash(stored):
+        return hmac.compare_digest(candidate, stored.strip())
+    try:
+        scheme, version, iterations, salt_text, digest_text = stored.split("$", 4)
+        if scheme != PASSWORD_SCHEME or version != PASSWORD_VERSION:
+            return False
+        salt = base64.urlsafe_b64decode(salt_text.encode("ascii"))
+        expected = base64.urlsafe_b64decode(digest_text.encode("ascii"))
+        actual = hashlib.pbkdf2_hmac(
+            "sha256", candidate.encode("utf-8"), salt, int(iterations)
+        )
+        return hmac.compare_digest(actual, expected)
+    except (ValueError, TypeError):
+        return False
 
 
 def normalize_customer_ssn(ssn):
@@ -34,6 +88,45 @@ def is_valid_customer_ssn(ssn):
 
 def format_receipt_number(record_id):
     return f"#{int(record_id):05d}"
+
+
+def get_dashboard_sales_trend(days=30):
+    """Return zero-filled daily net sales ending today using real sale/refund data."""
+    try:
+        days = int(days)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Days must be a whole number.") from error
+    if not 1 <= days <= 366:
+        raise ValueError("Days must be between 1 and 366.")
+
+    end_date = datetime.now().date()
+    start_date = end_date - timedelta(days=days - 1)
+    conn = get_connection()
+    try:
+        rows = conn.execute("""
+            WITH flow(day, amount) AS (
+                SELECT date(sale_datetime), total_amount FROM sales
+                UNION ALL
+                SELECT date(return_datetime), -total_amount FROM returns
+            )
+            SELECT day, ROUND(SUM(amount), 2) AS net_sales
+            FROM flow
+            WHERE day BETWEEN ? AND ?
+            GROUP BY day
+        """, (start_date.isoformat(), end_date.isoformat())).fetchall()
+        amounts = {row["day"]: float(row["net_sales"] or 0) for row in rows}
+    finally:
+        conn.close()
+
+    return [
+        {
+            "date": (start_date + timedelta(days=offset)).isoformat(),
+            "net_sales": amounts.get(
+                (start_date + timedelta(days=offset)).isoformat(), 0.0
+            ),
+        }
+        for offset in range(days)
+    ]
 
 
 
@@ -297,8 +390,8 @@ def initialize_database():
 
     cursor.execute("""
         INSERT OR IGNORE INTO users (username, password, role)
-        VALUES ('admin', '1234', 'admin')
-    """)
+        VALUES ('admin', ?, 'admin')
+    """, (hash_password("1234"),))
 
 
 
@@ -332,13 +425,22 @@ def authenticate_user(username, password):
     """, (username.strip(),))
     user = cursor.fetchone()
 
-    conn.close()
-
     if not user:
+        conn.close()
         return None
 
-    if str(user["password"]).strip() != str(password).strip():
+    if not verify_password(password, user["password"]):
+        conn.close()
         return None
+
+    if not is_password_hash(user["password"]):
+        conn.execute(
+            "UPDATE users SET password = ? WHERE id = ?",
+            (hash_password(password), user["id"]),
+        )
+        conn.commit()
+
+    conn.close()
 
     return {
         "id": user["id"],
@@ -370,7 +472,7 @@ def register_pharmacist(username, password):
     cursor.execute("""
         INSERT INTO users (username, password, role)
         VALUES (?, ?, 'pharmacist')
-    """, (username, password))
+    """, (username, hash_password(password)))
 
     add_audit_log(
         username,
@@ -384,6 +486,44 @@ def register_pharmacist(username, password):
     conn.close()
 
     return True, "Registration has been completed."
+
+
+def change_user_password(username, current_password, new_password,
+                         acting_username=None, acting_role=None):
+    """Validate and update a password without exposing its stored representation."""
+    username = (username or "").strip()
+    new_password = str(new_password or "").strip()
+    if len(new_password) < 4:
+        return False, "Password must be at least 4 characters long."
+
+    conn = get_connection("Password changed")
+    try:
+        user = conn.execute(
+            "SELECT id, password FROM users WHERE username = ?", (username,)
+        ).fetchone()
+        if not user:
+            return False, "Selected user account not found."
+        if not verify_password(current_password, user["password"]):
+            return False, "Current password is incorrect."
+
+        conn.execute(
+            "UPDATE users SET password = ? WHERE id = ?",
+            (hash_password(new_password), user["id"]),
+        )
+        add_audit_log(
+            acting_username or username,
+            f"Updated password for {username}",
+            role=acting_role,
+            conn=conn,
+            cursor=conn.cursor(),
+        )
+        conn.commit()
+        return True, f"Password updated successfully for {username}."
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 
@@ -1571,8 +1711,9 @@ def get_batch_rows(search_text="", category="All Categories"):
     return rows
 
 
-def get_fefo_allocations(product_id, requested_quantity):
-    conn = get_connection()
+def get_fefo_allocations(product_id, requested_quantity, conn=None):
+    owns_connection = conn is None
+    conn = conn or get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -1585,7 +1726,8 @@ def get_fefo_allocations(product_id, requested_quantity):
     """, (product_id,))
 
     batches = cursor.fetchall()
-    conn.close()
+    if owns_connection:
+        conn.close()
 
     allocations = []
     remaining = int(requested_quantity)
@@ -1610,8 +1752,9 @@ def get_fefo_allocations(product_id, requested_quantity):
     return allocations
 
 
-def preview_sale_allocations(cart_items):
-    conn = get_connection()
+def preview_sale_allocations(cart_items, conn=None):
+    owns_connection = conn is None
+    conn = conn or get_connection()
     cursor = conn.cursor()
 
     plan = []
@@ -1640,12 +1783,16 @@ def preview_sale_allocations(cart_items):
         product = cursor.fetchone()
 
         if not product:
-            conn.close()
+            if owns_connection:
+                conn.close()
             raise ValueError("Product not found.")
 
-        allocations = get_fefo_allocations(item["product_id"], item["quantity"])
+        allocations = get_fefo_allocations(
+            item["product_id"], item["quantity"], conn=conn
+        )
         if not allocations:
-            conn.close()
+            if owns_connection:
+                conn.close()
             raise ValueError(f"Insufficient non-expired stock for {product['name']}.")
 
         discount_percent = float(product["active_discount_percent"] or 0)
@@ -1666,7 +1813,8 @@ def preview_sale_allocations(cart_items):
             "allocations": allocations,
         })
 
-    conn.close()
+    if owns_connection:
+        conn.close()
     return plan, total_amount
 
 
@@ -1715,7 +1863,7 @@ def _create_sale_locked(
     customer_ssn=None,
     customer_name=None
     ):
-    plan, total_amount = preview_sale_allocations(cart_items)
+    plan, total_amount = preview_sale_allocations(cart_items, conn=conn)
 
     cursor = conn.cursor()
 
@@ -1793,8 +1941,17 @@ def _create_sale_locked(
             cursor.execute("""
                 UPDATE batches
                 SET quantity = quantity - ?
-                WHERE id = ?
-            """, (allocation["quantity"], allocation["batch_id"]))
+                WHERE id = ? AND quantity >= ?
+            """, (
+                allocation["quantity"],
+                allocation["batch_id"],
+                allocation["quantity"],
+            ))
+            if cursor.rowcount != 1:
+                raise ValueError(
+                    f"Stock changed while checking out {item['product_name']}. "
+                    "Please review the cart and try again."
+                )
 
             cursor.execute("""
                 INSERT INTO sale_batch_allocations (
