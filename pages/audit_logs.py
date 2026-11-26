@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
 )
 
 from database.db import get_audit_log_rows
-from i18n import T, format_date
+from i18n import T, format_date, translate_audit_description
 from ui_theme import (
     filter_card_style,
     header_caps_style,
@@ -217,7 +217,7 @@ class AuditLogsPage(QWidget):
 
         username = QLabel(row_data["username"])
         role = QLabel(T(row_data["role"].title()) if row_data["role"] else "-")
-        description = QLabel(T(row_data["description"]))
+        description = QLabel(translate_audit_description(row_data["description"]))
         description.setTextFormat(Qt.TextFormat.PlainText)
         if row_data.get("details"):
             from html import escape

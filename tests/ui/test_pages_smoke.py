@@ -13,6 +13,7 @@ import pages.batch_management as batch_management
 import pages.pos as pos
 import pages.prescriptions as prescriptions
 import pages.purchasing as purchasing
+import pages.performance as performance
 import pages.product as product
 import pages.reports as reports
 import pages.returned_items as returned_items
@@ -56,6 +57,15 @@ class PageSmokeTests(unittest.TestCase):
             patch.object(purchasing, "get_purchase_products", return_value=[]),
             patch.object(purchasing, "get_suppliers", return_value=[]),
             patch.object(purchasing, "get_purchase_history", return_value=[]),
+            patch.object(performance, "get_performance_statistics", return_value={
+                "days": 30, "attempts": 0, "successful": 0, "failed": 0,
+                "cancelled": 0, "success_rate": 0.0,
+                "checkout": {"avg": 0.0, "min": 0.0, "max": 0.0,
+                             "median": 0.0, "p95": 0.0},
+                "phases": [],
+            }),
+            patch.object(purchasing, "get_purchase_orders", return_value=[]),
+            patch.object(purchasing, "get_reorder_suggestions", return_value=[]),
             patch.object(sales_history, "get_sales_history", return_value=[]),
             patch.object(returned_items, "get_returns_history", return_value=[]),
             patch.object(audit_logs, "get_audit_log_rows", return_value=[]),
@@ -68,6 +78,7 @@ class PageSmokeTests(unittest.TestCase):
                 pos.POSPage(current_user=user),
                 prescriptions.PrescriptionsPage(),
                 purchasing.PurchasingPage(current_user=user),
+                performance.PerformancePage(current_user=user),
                 sales_history.SalesHistoryPage(current_user=user),
                 returned_items.ReturnedItemsPage(current_user=user),
                 audit_logs.AuditLogsPage(),

@@ -21,7 +21,8 @@ The application includes:
 - separate login access for **Admin** and **Pharmacist**
 - product management with barcode, category, price, and dosage form
 - batch-based stock tracking
-- supplier management and purchase receiving
+- supplier management, purchase orders, partial/full receiving, and purchase history
+- reorder suggestions based on recent sales, usable stock, delivery time, and safety stock
 - expiry monitoring
 - checkout and cart handling
 - prescription tracking for medicines that require it
@@ -33,6 +34,7 @@ The application includes:
 - safe Excel data merge that skips duplicate records
 - exact database backup and restore
 - English, Hungarian, and Arabic interface languages
+- administrator checkout-performance statistics
 
 ## What You Need Before Running It
 
@@ -137,7 +139,9 @@ Shows medicine count, sales, returned items, low stock, expiry alerts, and the l
 Used for managing medicine batches, stock quantity, and expiry dates.
 
 ### Purchasing
-Used by administrators to manage suppliers, receive multi-item deliveries, update batch stock, and review purchase history. Existing batches are increased only when their product and expiry details match.
+Used by administrators to manage suppliers and the full purchasing flow. Staff can create purchase orders, submit or cancel them, record partial or complete deliveries, review delivery notes, and see purchase history. Stock is updated only when a delivery is received.
+
+The reorder page estimates an order quantity from recent sales, current usable stock, open purchase orders, supplier delivery time, safety days, and the product's minimum stock level. The result can be adjusted before creating a draft purchase order.
 
 ### Point of Sale
 Used for searching products, adding them to the cart, and completing sales.
@@ -160,6 +164,9 @@ Used for daily or monthly sales summaries, fast and slow movers, low stock, expi
 ### Audit Logs
 Used for checking important actions performed by users.
 
+### POS Performance
+Available to administrators for reviewing checkout attempts, success rates, processing times, and measured checkout phases. It stores timing information only, not customer names, SSNs, barcodes, or search text.
+
 ### Settings
 Used for password, account, and language settings.
 
@@ -168,7 +175,7 @@ Used for password, account, and language settings.
 The **Reports** page provides two different options:
 
 - **Backup database** creates an exact copy of the pharmacy database. Use this for full recovery.
-- **Export data** creates a readable Excel workbook, including suppliers and purchases. Use **Merge data** to add records from such a workbook while skipping records already present.
+- **Export data** creates a readable Excel workbook, including suppliers, purchase orders, deliveries, inventory, sales, returns, and audit history. Use **Merge data** to add records from such a workbook while skipping records already present.
 
 Restoring a database replaces the current data. The application creates a safety backup first and then closes so the restored database can be loaded on the next start.
 

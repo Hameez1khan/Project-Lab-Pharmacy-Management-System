@@ -24,6 +24,7 @@ from pages.prescriptions import PrescriptionsPage
 from pages.audit_logs import AuditLogsPage
 from pages.reports import ReportsPage
 from pages.purchasing import PurchasingPage
+from pages.performance import PerformancePage
 from i18n import T, format_current_date, is_rtl
 from ui_theme import (
     BORDER,
@@ -87,6 +88,10 @@ class MainWindow(QWidget):
             PurchasingPage(current_user=self.current_user)
             if self.current_role == "admin" else None
         )
+        self.performance_page = (
+            PerformancePage(current_user=self.current_user)
+            if self.current_role == "admin" else None
+        )
         self.pos_page = POSPage(current_user=self.current_user)
         self.product_page = ProductPage(role=self.current_role, current_user=self.current_user)
 
@@ -101,6 +106,8 @@ class MainWindow(QWidget):
         self.stack.addWidget(self.batch_management_page)
         if self.purchasing_page is not None:
             self.stack.addWidget(self.purchasing_page)
+        if self.performance_page is not None:
+            self.stack.addWidget(self.performance_page)
         self.stack.addWidget(self.pos_page)
         self.stack.addWidget(self.product_page)
         self.stack.addWidget(self.prescriptions_page)
@@ -208,6 +215,7 @@ class MainWindow(QWidget):
 
         if self.current_role == "admin":
             menu_items.insert(2, ("Purchasing", "", self.show_purchasing, True))
+            menu_items.append(("POS Performance", "", self.show_performance, True))
             menu_items.append(("Settings", "", self.show_settings, True))
 
         for text, icon, handler, enabled in menu_items:
@@ -401,6 +409,13 @@ class MainWindow(QWidget):
         self.set_active_button("Purchasing")
         self.purchasing_page.refresh()
         self.stack.setCurrentWidget(self.purchasing_page)
+
+    def show_performance(self):
+        if self.performance_page is None:
+            return
+        self.set_active_button("POS Performance")
+        self.performance_page.refresh()
+        self.stack.setCurrentWidget(self.performance_page)
 
     def show_pos(self):
         self.set_active_button("Point of Sale")

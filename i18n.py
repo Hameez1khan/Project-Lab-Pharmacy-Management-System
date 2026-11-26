@@ -1,4 +1,5 @@
 from datetime import datetime
+import re
 
 from PyQt6.QtCore import QDate, QLocale, QSettings, Qt
 from PyQt6.QtWidgets import QInputDialog
@@ -21,6 +22,10 @@ Edit Supplier|Beszállító szerkesztése|تعديل المورد
 + Add Supplier|+ Új beszállító|+ إضافة مورد
 Supplier|Beszállító|المورد
 Supplier name|Beszállító neve|اسم المورد
+Lead time|Szállítási idő|مهلة التوريد
+Created by|Létrehozta|أنشأه
+ days| nap| يومًا
+ Ft| Ft| Ft
 Contact person|Kapcsolattartó|جهة الاتصال
 Phone|Telefon|الهاتف
 Email|E-mail|البريد الإلكتروني
@@ -49,6 +54,11 @@ No delivery notes provided.|Nincs megadva szállítási megjegyzés.|لم يتم
 Purchase receipt was not found.|A beszerzési bizonylat nem található.|لم يتم العثور على إيصال الشراء.
 Close|Bezárás|إغلاق
 No received items found.|Nincsenek átvett tételek.|لم يتم العثور على عناصر مستلمة.
+Purchase Order Details|Beszerzési rendelés részletei|تفاصيل أمر الشراء
+Order notes|Rendelési megjegyzések|ملاحظات الطلب
+Related receipts|Kapcsolódó bizonylatok|الإيصالات المرتبطة
+No order notes provided.|Nincsenek rendelési megjegyzések.|لم يتم تقديم ملاحظات للطلب.
+No receipts recorded.|Nincsenek rögzített bizonylatok.|لا توجد إيصالات مسجلة.
 Purchase receipt P-{receipt:05d} was saved and stock was updated.|A P-{receipt:05d} beszerzési bizonylat mentve, a készlet frissítve.|تم حفظ إيصال الشراء P-{receipt:05d} وتحديث المخزون.
 Delete Supplier|Beszállító törlése|حذف المورد
 Delete supplier {name}?|Törli a(z) {name} beszállítót?|هل تريد حذف المورد {name}؟
@@ -169,6 +179,8 @@ Cancel|Mégse|إلغاء
 Save|Mentés|حفظ
 Add|Hozzáadás|إضافة
 + Add Batch|+ Új tétel|+ إضافة دفعة
+Add Batch|Tétel hozzáadása|إضافة دفعة
+Edit Batch|Tétel szerkesztése|تعديل الدفعة
 + Add Product|+ Új termék|+ إضافة منتج
 Cart|Kosár|السلة
 Checkout|Fizetés|إتمام البيع
@@ -329,6 +341,8 @@ Cart Empty|A kosár üres|السلة فارغة
 Please add medicines to the cart first.|Előbb tegyen gyógyszert a kosárba.|أضف الأدوية إلى السلة أولًا.
 Customer Details Required|Vásárlói adatok szükségesek|بيانات العميل مطلوبة
 Customer SSN and name are required because the cart contains prescription products.|A receptköteles termékek miatt a vásárló neve és azonosítója kötelező.|اسم العميل ورقم هويته مطلوبان لأن السلة تحتوي على أدوية بوصفة.
+SSN and name are required because the cart contains prescription products.|A receptköteles termékek miatt az azonosító és a vásárló neve kötelező.|رقم الهوية واسم العميل مطلوبان لأن السلة تحتوي على منتجات بوصفة طبية.
+Customer can share SSN and name, or decline for non-prescription purchases.|A vásárló megadhatja az azonosítóját és nevét, vagy elutasíthatja ezt a nem receptköteles vásárlásnál.|يمكن للعميل مشاركة رقم الهوية والاسم أو الرفض للمشتريات التي لا تتطلب وصفة طبية.
 Incomplete Details|Hiányos adatok|بيانات غير مكتملة
 Please provide both customer name and SSN, or decline.|Adja meg a vásárló nevét és azonosítóját, vagy utasítsa el.|أدخل اسم العميل ورقم هويته أو ارفض.
 Invalid SSN|Érvénytelen azonosító|رقم هوية غير صالح
@@ -397,7 +411,6 @@ Return Report Error|Visszárujelentés-hiba|خطأ في تقرير الإرجا�
 Return report data could not be found.|A visszárujelentés adatai nem találhatók.|تعذر العثور على بيانات تقرير الإرجاع.
 Return Report Downloaded|Visszárujelentés letöltve|تم تنزيل تقرير الإرجاع
 Return report saved to Downloads as {filename}|A visszárujelentés a Letöltések mappába került: {filename}|تم حفظ تقرير الإرجاع في التنزيلات باسم {filename}
-Payment Method|Fizetési mód|طريقة الدفع
 Original Sale Date|Eredeti eladás dátuma|تاريخ البيع الأصلي
 Processed By|Feldolgozta|تمت المعالجة بواسطة
 No.|Ssz.|الرقم
@@ -417,13 +430,231 @@ Sold: {sold} • Already returned: {returned} • Available now: {available} •
 Export private pharmacy data|Bizalmas gyógyszertári adatok exportálása|تصدير بيانات الصيدلية الخاصة
 Period|Időszak|الفترة
 Inventory as of|Készlet dátuma|المخزون بتاريخ
+POS Performance|Pénztári teljesítmény|أداء نقطة البيع
+Measured checkout and interaction times from this device|Ezen az eszközön mért fizetési és interakciós idők|أوقات إتمام البيع والتفاعل المقاسة على هذا الجهاز
+Last 7 days|Elmúlt 7 nap|آخر 7 أيام
+Last 30 days|Elmúlt 30 nap|آخر 30 يومًا
+Last 90 days|Elmúlt 90 nap|آخر 90 يومًا
+Last 365 days|Elmúlt 365 nap|آخر 365 يومًا
+Refresh|Frissítés|تحديث
+Checkout attempts|Fizetési kísérletek|محاولات إتمام البيع
+Success rate|Sikerességi arány|معدل النجاح
+Median checkout|Medián fizetési idő|الوقت الوسيط لإتمام البيع
+95th percentile|95. percentilis|المئين الخامس والتسعون
+Median processing|Medián feldolgozási idő|متوسط وقت المعالجة
+Processing P95|Feldolgozási P95|المئين 95 للمعالجة
+Sale saved and FEFO picking instructions confirmed. Total: {total}|Az eladás mentve, a FEFO kiadási utasítások jóváhagyva. Összesen: {total}|تم حفظ البيع وتأكيد تعليمات الصرف وفق FEFO. الإجمالي: {total}
+Successful: {success} \| Failed: {failed} \| Cancelled: {cancelled}|Sikeres: {success} \| Sikertelen: {failed} \| Megszakítva: {cancelled}|ناجح: {success} \| فاشل: {failed} \| ملغى: {cancelled}
+Operation|Művelet|العملية
+Phase|Fázis|المرحلة
+Type|Típus|النوع
+Count|Darabszám|العدد
+Average (ms)|Átlag (ms)|المتوسط (مللي ثانية)
+Minimum (ms)|Minimum (ms)|الحد الأدنى (مللي ثانية)
+Maximum (ms)|Maximum (ms)|الحد الأقصى (مللي ثانية)
+Median (ms)|Medián (ms)|الوسيط (مللي ثانية)
+P95 (ms)|P95 (ms)|المئين 95 (مللي ثانية)
+Failed|Sikertelen|فاشل
+processing|Feldolgozás|المعالجة
+interaction|Interakció|التفاعل
+processing_total|Teljes feldolgozási idő|إجمالي وقت المعالجة
+interaction_total|Teljes interakciós idő|إجمالي وقت التفاعل
+total_system_checkout|Teljes rendszeroldali fizetési idő|إجمالي وقت إتمام البيع في النظام
+checkout|Fizetés|إتمام البيع
+search|Keresés|البحث
+product_lookup|Termékkeresés|البحث عن المنتج
+cart_availability|Kosár és készlet ellenőrzése|التحقق من السلة والمخزون
+prescription_check|Vénykötelezettség ellenőrzése|التحقق من الوصفة الطبية
+customer_details|Vásárlói adatok|بيانات العميل
+fefo_allocation|FEFO készletkiosztás|تخصيص المخزون وفق FEFO
+batch_confirmation|Tételkiosztás jóváhagyása|تأكيد اختيار الدفعات
+payment_selection|Fizetési mód kiválasztása|اختيار طريقة الدفع
+transaction|Adatbázis-tranzakció|معاملة قاعدة البيانات
+inventory_deduction|Készletcsökkentés|خصم المخزون
+receipt_generation|Bizonylat összeállítása|إنشاء الإيصال
+receipt_summary|Bizonylatösszesítő összeállítása|إعداد ملخص الإيصال
+post_checkout_refresh|Eladás utáni frissítés|التحديث بعد إتمام البيع
+New Purchase Order|Új beszerzési rendelés|أمر شراء جديد
+Edit Purchase Order|Beszerzési rendelés szerkesztése|تعديل أمر الشراء
+Purchase Orders|Beszerzési rendelések|أوامر الشراء
+Reorder Suggestions|Újrarendelési javaslatok|اقتراحات إعادة الطلب
+Draft|Piszkozat|مسودة
+Pending|Függőben|قيد الانتظار
+Ordered|Megrendelve|تم الطلب
+Partially received|Részben átvéve|مستلم جزئيًا
+Fully received|Teljesen átvéve|مستلم بالكامل
+Cancelled|Törölve|ملغى
+All statuses|Minden állapot|جميع الحالات
+Order date|Rendelés dátuma|تاريخ الطلب
+Expected delivery|Várható szállítás|التسليم المتوقع
+Order items|Rendelési tételek|عناصر الطلب
+Optional order notes|Opcionális rendelési megjegyzések|ملاحظات طلب اختيارية
+Save Purchase Order|Beszerzési rendelés mentése|حفظ أمر الشراء
+Receive Purchase Order|Beszerzési rendelés átvétele|استلام أمر الشراء
+Receive {number}|{number} átvétele|استلام {number}
+Outstanding|Fennmaradó|المتبقي
+Receive now|Átvétel most|الاستلام الآن
+Receive selected quantities|Kiválasztott mennyiségek átvétele|استلام الكميات المحددة
+Search by order number or supplier...|Keresés rendelésszám vagy beszállító alapján...|البحث برقم الطلب أو المورد...
++ New Purchase Order|+ Új beszerzési rendelés|+ أمر شراء جديد
+Order number|Rendelésszám|رقم الطلب
+Expected|Várható|المتوقع
+Received|Átvett|المستلم
+Total cost|Összköltség|التكلفة الإجمالية
+Recalculate|Újraszámítás|إعادة الحساب
+Create Draft Order|Piszkozat létrehozása|إنشاء طلب مسودة
+{days} days|{days} nap|{days} يومًا
+Sales period|Értékesítési időszak|فترة المبيعات
+Safety stock days|Biztonsági készlet napjai|أيام مخزون الأمان
+Select|Kiválasztás|تحديد
+Movement|Forgási sebesség|حركة المخزون
+Daily sales|Napi értékesítés|المبيعات اليومية
+Usable stock|Felhasználható készlet|المخزون القابل للاستخدام
+Outstanding PO|Függő rendelés|طلبات الشراء المعلقة
+Reorder point|Újrarendelési pont|نقطة إعادة الطلب
+Suggested|Javasolt|المقترح
+Order quantity|Rendelendő mennyiség|كمية الطلب
+Calculation|Számítás|الحساب
+The selected database file does not exist.|A kiválasztott adatbázisfájl nem létezik.|ملف قاعدة البيانات المحدد غير موجود.
+Choose a different file for the backup.|Válasszon másik fájlt a biztonsági mentéshez.|اختر ملفًا مختلفًا للنسخة الاحتياطية.
+The selected file is already the active database.|A kiválasztott fájl már az aktív adatbázis.|الملف المحدد هو قاعدة البيانات النشطة بالفعل.
+The selected file is not a valid SQLite database.|A kiválasztott fájl nem érvényes SQLite-adatbázis.|الملف المحدد ليس قاعدة بيانات SQLite صالحة.
+Registration has been completed.|A regisztráció befejeződött.|اكتمل التسجيل.
+Batch added successfully.|A tétel sikeresen hozzáadva.|تمت إضافة الدفعة بنجاح.
+Product added successfully.|A termék sikeresen hozzáadva.|تمت إضافة المنتج بنجاح.
+Product updated successfully.|A termék sikeresen frissítve.|تم تحديث المنتج بنجاح.
+Product deleted successfully.|A termék sikeresen törölve.|تم حذف المنتج بنجاح.
+Return deleted successfully.|A visszáru sikeresen törölve.|تم حذف المرتجع بنجاح.
+Sale deleted successfully.|Az értékesítés sikeresen törölve.|تم حذف البيع بنجاح.
+Password is required.|A jelszó kötelező.|كلمة المرور مطلوبة.
+Days must be between 1 and 366.|A napok száma 1 és 366 közötti legyen.|يجب أن يكون عدد الأيام بين 1 و366.
+Days must be a whole number.|A napok száma egész szám legyen.|يجب أن يكون عدد الأيام عددًا صحيحًا.
+Username and password are required.|A felhasználónév és a jelszó kötelező.|اسم المستخدم وكلمة المرور مطلوبان.
+This username already exists.|Ez a felhasználónév már létezik.|اسم المستخدم هذا موجود بالفعل.
+Password must be at least 4 characters long.|A jelszónak legalább 4 karakter hosszúnak kell lennie.|يجب ألا تقل كلمة المرور عن 4 أحرف.
+Current password is incorrect.|A jelenlegi jelszó helytelen.|كلمة المرور الحالية غير صحيحة.
+Selected user account not found.|A kiválasztott felhasználói fiók nem található.|لم يتم العثور على حساب المستخدم المحدد.
+Product does not exist in the products table.|A termék nem szerepel a terméktáblában.|المنتج غير موجود في جدول المنتجات.
+Batch number already exists.|A tételszám már létezik.|رقم الدفعة موجود بالفعل.
+Enter a positive purchase cost with at most two decimal places.|Adjon meg pozitív beszerzési költséget, legfeljebb két tizedesjeggyel.|أدخل تكلفة شراء موجبة بحد أقصى منزلتين عشريتين.
+Supplier lead time must be a whole number of days.|A szállítási idő egész számú nap legyen.|يجب أن تكون مهلة المورد عددًا صحيحًا من الأيام.
+Supplier lead time must be between 0 and 365 days.|A szállítási idő 0 és 365 nap közötti legyen.|يجب أن تكون مهلة المورد بين 0 و365 يومًا.
+Suppliers with purchase orders cannot be deleted.|Beszerzési rendeléssel rendelkező beszállító nem törölhető.|لا يمكن حذف مورد لديه أوامر شراء.
+Purchase order was not found.|A beszerzési rendelés nem található.|لم يتم العثور على أمر الشراء.
+The receipt supplier does not match the purchase order.|A bizonylat beszállítója nem egyezik a beszerzési rendeléssel.|مورد الإيصال لا يطابق أمر الشراء.
+Only ordered or partially received orders can be received.|Csak megrendelt vagy részben átvett rendelés vehető át.|يمكن استلام الطلبات المطلوبة أو المستلمة جزئيًا فقط.
+Every received line must belong to the purchase order.|Minden átvett sornak a beszerzési rendeléshez kell tartoznia.|يجب أن ينتمي كل سطر مستلم إلى أمر الشراء.
+A received line does not match the purchase order.|Egy átvett sor nem egyezik a beszerzési rendeléssel.|أحد الأسطر المستلمة لا يطابق أمر الشراء.
+Received quantity exceeds the outstanding order quantity.|Az átvett mennyiség meghaladja a rendelés fennmaradó mennyiségét.|الكمية المستلمة تتجاوز الكمية المتبقية في الطلب.
+Purchase order quantities changed. Refresh and try again.|A rendelési mennyiségek megváltoztak. Frissítsen, majd próbálja újra.|تغيرت كميات أمر الشراء. حدّث الصفحة وحاول مرة أخرى.
+Add at least one purchase order item.|Adjon hozzá legalább egy rendelési tételt.|أضف عنصرًا واحدًا على الأقل إلى أمر الشراء.
+Check the product, quantity, and cost on every order line.|Ellenőrizze minden rendelési sor termékét, mennyiségét és költségét.|تحقق من المنتج والكمية والتكلفة في كل سطر طلب.
+Each product can appear only once on a purchase order.|Egy termék csak egyszer szerepelhet a beszerzési rendelésen.|يمكن أن يظهر كل منتج مرة واحدة فقط في أمر الشراء.
+Ordered quantities must be positive whole numbers.|A rendelt mennyiségek pozitív egész számok legyenek.|يجب أن تكون الكميات المطلوبة أعدادًا صحيحة موجبة.
+Enter valid order and expected delivery dates.|Adjon meg érvényes rendelési és várható szállítási dátumot.|أدخل تاريخ طلب وتاريخ تسليم متوقع صالحين.
+Expected delivery cannot be before the order date.|A várható szállítás nem lehet korábbi a rendelés dátumánál.|لا يمكن أن يكون التسليم المتوقع قبل تاريخ الطلب.
+New purchase orders must be draft or pending.|Az új beszerzési rendelés állapota piszkozat vagy függőben lehet.|يجب أن تكون أوامر الشراء الجديدة مسودة أو قيد الانتظار.
+Purchase order notes are too long.|A beszerzési rendelés megjegyzése túl hosszú.|ملاحظات أمر الشراء طويلة جدًا.
+Only draft or pending purchase orders can be edited.|Csak piszkozat vagy függőben lévő rendelés szerkeszthető.|يمكن تعديل أوامر الشراء المسودة أو قيد الانتظار فقط.
+Invalid purchase order status.|Érvénytelen beszerzési rendelési állapot.|حالة أمر الشراء غير صالحة.
+This purchase order status change is not allowed.|Ez a rendelési állapotváltoztatás nem engedélyezett.|تغيير حالة أمر الشراء هذا غير مسموح.
+A purchase order with received stock cannot be cancelled.|Átvett készlettel rendelkező beszerzési rendelés nem mondható le.|لا يمكن إلغاء أمر شراء تم استلام مخزون منه.
+Sales period and safety stock must be whole numbers of days.|Az értékesítési időszak és a biztonsági készlet napjai egész számok legyenek.|يجب أن تكون فترة المبيعات وأيام مخزون الأمان أعدادًا صحيحة.
+Sales period must be 7, 30, 60, or 90 days.|Az értékesítési időszak 7, 30, 60 vagy 90 nap lehet.|يجب أن تكون فترة المبيعات 7 أو 30 أو 60 أو 90 يومًا.
+Safety stock days must be between 0 and 365.|A biztonsági készlet napjai 0 és 365 között legyenek.|يجب أن تكون أيام مخزون الأمان بين 0 و365.
+Select at least one recommendation with a positive quantity.|Válasszon ki legalább egy pozitív mennyiségű javaslatot.|حدد اقتراحًا واحدًا على الأقل بكمية موجبة.
+A product with this name already exists.|Már létezik ilyen nevű termék.|يوجد منتج بهذا الاسم بالفعل.
+This barcode already exists.|Ez a vonalkód már létezik.|هذا الرمز الشريطي موجود بالفعل.
+Product not found.|A termék nem található.|لم يتم العثور على المنتج.
+Sale not found.|Az értékesítés nem található.|لم يتم العثور على البيع.
+Return record not found.|A visszáru bejegyzése nem található.|لم يتم العثور على سجل المرتجع.
+This sale already has processed returns and can no longer be deleted.|Ehhez az értékesítéshez már tartozik feldolgozott visszáru, ezért nem törölhető.|لهذا البيع مرتجعات معالجة بالفعل ولا يمكن حذفه.
+Select at least one item to return.|Válasszon ki legalább egy visszaküldendő tételt.|حدد عنصرًا واحدًا على الأقل للإرجاع.
+One of the selected sale items could not be found.|Az egyik kiválasztott értékesítési tétel nem található.|تعذر العثور على أحد عناصر البيع المحددة.
+Customer SSN and name are required for prescription medicines.|Receptköteles gyógyszernél a vásárló neve és azonosítója kötelező.|رقم هوية العميل واسمه مطلوبان للأدوية الموصوفة.
+The start date must not follow the end date.|A kezdőnap nem lehet későbbi a zárónapnál.|يجب ألا يكون تاريخ البداية بعد تاريخ النهاية.
+Administrator access required.|Rendszergazdai hozzáférés szükséges.|يلزم وصول المسؤول.
+Formulas are not allowed in a data workbook.|Képletek nem engedélyezettek az adatmunkafüzetben.|الصيغ غير مسموح بها في مصنف البيانات.
+Use text for dates, codes and names.|A dátumokat, kódokat és neveket szövegként adja meg.|استخدم النص للتواريخ والرموز والأسماء.
+Missing workbook manifest.|Hiányzik a munkafüzet jegyzéke.|بيان المصنف مفقود.
+Not a pharmacy data workbook.|Ez nem gyógyszertári adatmunkafüzet.|هذا ليس مصنف بيانات صيدلية.
+The workbook is missing required data worksheets.|A munkafüzetből hiányoznak kötelező adatlapok.|يفتقد المصنف أوراق البيانات المطلوبة.
+Missing or unexpected worksheet.|Hiányzó vagy váratlan munkalap.|ورقة عمل مفقودة أو غير متوقعة.
+Invalid manifest.|Érvénytelen jegyzék.|بيان غير صالح.
+Expected a whole number.|Egész szám szükséges.|يجب إدخال عدد صحيح.
+Expected a finite amount.|Véges számérték szükséges.|يجب إدخال مبلغ محدود.
+Missing, invalid or repeated record ID.|Hiányzó, érvénytelen vagy ismétlődő rekordazonosító.|معرف سجل مفقود أو غير صالح أو مكرر.
+Invalid quantity.|Érvénytelen mennyiség.|كمية غير صالحة.
+Unexpected account role.|Váratlan fiókszerepkör.|دور حساب غير متوقع.
+Separate sales histories cannot safely be matched by receipt number.|Külön értékesítési előzmények nem egyeztethetők biztonságosan nyugtaszám alapján.|لا يمكن مطابقة سجلات مبيعات منفصلة بأمان باستخدام رقم الإيصال.
+Invalid audit snapshot.|Érvénytelen napló-pillanatkép.|لقطة تدقيق غير صالحة.
+Purchase order {number} was saved.|A(z) {number} beszerzési rendelés mentve.|تم حفظ أمر الشراء {number}.
+Supplier: {supplier}|Beszállító: {supplier}|المورد: {supplier}
+Status: {status}|Állapot: {status}|الحالة: {status}
+Expected delivery: {date}|Várható szállítás: {date}|التسليم المتوقع: {date}
+Draft purchase order {number} was created.|A(z) {number} beszerzési rendelés piszkozata létrejött.|تم إنشاء مسودة أمر الشراء {number}.
+Cancel Purchase Order|Beszerzési rendelés törlése|إلغاء أمر الشراء
+Cancel purchase order {number}?|Törli a(z) {number} beszerzési rendelést?|هل تريد إلغاء أمر الشراء {number}؟
+{product}: ordered {ordered}, received {received}, outstanding {outstanding}|{product}: rendelt {ordered}, átvett {received}, fennmaradó {outstanding}|{product}: المطلوب {ordered}، المستلم {received}، المتبقي {outstanding}
+This order has no outstanding items.|Ennek a rendelésnek nincs fennmaradó tétele.|لا يحتوي هذا الطلب على عناصر متبقية.
+Receipts:|Bizonylatok:|الإيصالات:
+{reference} on {date}|{reference}, {date}|{reference} بتاريخ {date}
+Submit|Beküldés|إرسال
+Mark Ordered|Megrendeltnek jelölés|تحديد كمطلوب
+Receive|Átvétel|استلام
+Reference|Hivatkozás|المرجع
+No sales history|Nincs értékesítési előzmény|لا يوجد سجل مبيعات
+{sold} sold / {period} days; target {target}; usable {usable}; outstanding {outstanding}.|{sold} eladva / {period} nap; célkészlet {target}; használható {usable}; függő rendelés {outstanding}.|تم بيع {sold} خلال {period} يومًا؛ المخزون المستهدف {target}؛ المتاح {usable}؛ الطلبات المعلقة {outstanding}.
+{sold} sold / {period} days = {daily} per day; lead time {lead} days + safety {safety} days; reorder point {point}; target {target}; usable {usable}; outstanding {outstanding}; suggested {suggested}.|{sold} eladás / {period} nap = napi {daily}; szállítás {lead} nap + biztonság {safety} nap; újrarendelési pont {point}; cél {target}; használható {usable}; függő {outstanding}; javasolt {suggested}.|تم بيع {sold} خلال {period} يومًا = {daily} يوميًا؛ مهلة {lead} أيام + أمان {safety} أيام؛ نقطة إعادة الطلب {point}؛ الهدف {target}؛ المتاح {usable}؛ المعلق {outstanding}؛ المقترح {suggested}.
+Fast-moving|Gyorsan fogyó|سريع الحركة
+Slow-moving|Lassan fogyó|بطيء الحركة
+Updated password for {username}|{username} jelszava frissítve|تم تحديث كلمة مرور {username}
+Added supplier {name}|{name} beszállító hozzáadva|تمت إضافة المورد {name}
+Updated supplier {name}|{name} beszállító frissítve|تم تحديث المورد {name}
+Deleted supplier {name}|{name} beszállító törölve|تم حذف المورد {name}
+Received purchase {reference} from {supplier} ({quantity} units)|A(z) {reference} beszerzés átvéve ettől: {supplier} ({quantity} egység)|تم استلام المشتريات {reference} من {supplier} ({quantity} وحدة)
+Created purchase order {number} for {supplier}|A(z) {number} beszerzési rendelés létrehozva: {supplier}|تم إنشاء أمر الشراء {number} للمورد {supplier}
+Updated purchase order {number} for {supplier}|A(z) {number} beszerzési rendelés frissítve: {supplier}|تم تحديث أمر الشراء {number} للمورد {supplier}
+Changed purchase order {number} from {old_status} to {new_status}|A(z) {number} rendelés állapota megváltozott: {old_status} → {new_status}|تم تغيير حالة أمر الشراء {number} من {old_status} إلى {new_status}
+Added product {name}|{name} termék hozzáadva|تمت إضافة المنتج {name}
+Updated product {name}|{name} termék frissítve|تم تحديث المنتج {name}
+Deleted product {name}|{name} termék törölve|تم حذف المنتج {name}
+Added batch {batch} for {product}|A(z) {batch} tétel hozzáadva ehhez: {product}|تمت إضافة الدفعة {batch} للمنتج {product}
+Updated batch {batch} for {product}|A(z) {batch} tétel frissítve ehhez: {product}|تم تحديث الدفعة {batch} للمنتج {product}
+Deleted batch {batch} for {product}|A(z) {batch} tétel törölve ehhez: {product}|تم حذف الدفعة {batch} للمنتج {product}
+Carried out item return for {product} x{quantity} from {receipt}|{product} x{quantity} visszáru feldolgozva innen: {receipt}|تم تنفيذ إرجاع {product} x{quantity} من {receipt}
+Deleted return {return_receipt} for {sale_receipt}|A(z) {return_receipt} visszáru törölve ehhez: {sale_receipt}|تم حذف المرتجع {return_receipt} للبيع {sale_receipt}
+Sold {product} x{quantity}|Eladva: {product} x{quantity}|تم بيع {product} x{quantity}
+Deleted sale {receipt}|A(z) {receipt} eladás törölve|تم حذف البيع {receipt}
+Created from replenishment recommendations|Készletpótlási javaslatokból létrehozva|تم الإنشاء من توصيات تجديد المخزون
 """
 
-_strings = {}
-for line in _catalog.strip().splitlines():
-    if line.strip():
-        en, hu, ar = (part.replace(r"\n", "\n") for part in line.split("|", 2))
-        _strings[en.casefold()] = {"hu": hu, "ar": ar}
+def _split_catalog_line(line):
+    return [
+        part.replace(r"\|", "|").replace(r"\n", "\n")
+        for part in re.split(r"(?<!\\)\|", line, maxsplit=2)
+    ]
+
+
+def _parse_catalog(catalog):
+    strings = {}
+    folded_strings = {}
+    for line_number, line in enumerate(catalog.strip().splitlines(), 1):
+        if not line.strip():
+            continue
+        parts = _split_catalog_line(line)
+        if len(parts) != 3:
+            raise ValueError(f"Malformed translation catalog line {line_number}")
+        en, hu, ar = parts
+        if en in strings:
+            raise ValueError(f"Duplicate translation key on line {line_number}: {en}")
+        translations = {"hu": hu, "ar": ar}
+        strings[en] = translations
+        folded_strings.setdefault(en.casefold(), translations)
+    return strings, folded_strings
+
+
+_strings, _folded_strings = _parse_catalog(_catalog)
 
 
 def language():
@@ -438,7 +669,10 @@ def T(key):
     key = str(key)
     if _language == "en":
         return key
-    translated = _strings.get(key.casefold(), {}).get(_language)
+    translations = _strings.get(key)
+    if translations is None:
+        translations = _folded_strings.get(key.casefold(), {})
+    translated = translations.get(_language)
     if translated is not None:
         return translated
     if key.endswith(" (Ft)"):
@@ -448,6 +682,44 @@ def T(key):
 
 def TF(key, **values):
     return T(key).format(**values)
+
+
+def translate_audit_description(description):
+    patterns = (
+        (r"Updated password for (?P<username>.+)", "Updated password for {username}"),
+        (r"(?P<action>Added|Updated|Deleted) supplier (?P<name>.+)", None),
+        (r"Received purchase (?P<reference>.+) from (?P<supplier>.+) \((?P<quantity>\d+) units\)",
+         "Received purchase {reference} from {supplier} ({quantity} units)"),
+        (r"(?P<action>Created|Updated) purchase order (?P<number>\S+) for (?P<supplier>.+)", None),
+        (r"Changed purchase order (?P<number>\S+) from (?P<old_status>\S+) to (?P<new_status>\S+)",
+         "Changed purchase order {number} from {old_status} to {new_status}"),
+        (r"(?P<action>Added|Updated|Deleted) product (?P<name>.+)", None),
+        (r"(?P<action>Added|Updated|Deleted) batch (?P<batch>\S+) for (?P<product>.+)", None),
+        (r"Carried out item return for (?P<product>.+) x(?P<quantity>\d+) from (?P<receipt>.+)",
+         "Carried out item return for {product} x{quantity} from {receipt}"),
+        (r"Deleted return (?P<return_receipt>\S+) for (?P<sale_receipt>\S+)",
+         "Deleted return {return_receipt} for {sale_receipt}"),
+        (r"Sold (?P<product>.+) x(?P<quantity>\d+)", "Sold {product} x{quantity}"),
+        (r"Deleted sale (?P<receipt>.+)", "Deleted sale {receipt}"),
+    )
+    for pattern, template in patterns:
+        match = re.fullmatch(pattern, str(description or ""))
+        if not match:
+            continue
+        values = match.groupdict()
+        if template is None:
+            action = values.pop("action")
+            if "batch" in values:
+                template = f"{action} batch {{batch}} for {{product}}"
+            elif "number" in values:
+                template = f"{action} purchase order {{number}} for {{supplier}}"
+            else:
+                template = f"{action} {'supplier' if 'name' in values and 'supplier' in pattern else 'product'} {{name}}"
+        for status in ("old_status", "new_status"):
+            if status in values:
+                values[status] = T(values[status].replace("_", " ").title())
+        return TF(template, **values)
+    return T(description)
 
 
 def locale():

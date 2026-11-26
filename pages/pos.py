@@ -16,9 +16,27 @@ from database.db import (
     is_valid_customer_ssn,
     preview_sale_allocations,
 )
+from database.performance import CheckoutPerformance, measure_metric
 from i18n import T, TF, force_ltr, format_date, format_money, ltr_text
 
 BLUE = "#2563eb"
+
+
+def build_receipt_summary(plan, total_amount, payment_method):
+    """Create the non-sensitive receipt data used by the completion message."""
+    return {
+        "items": [
+            {
+                "name": line["product_name"],
+                "quantity": int(line["quantity"]),
+                "unit_price": float(line["price"]),
+                "subtotal": float(line["subtotal"]),
+            }
+            for line in plan
+        ],
+        "total": float(total_amount),
+        "payment_method": payment_method,
+    }
 
 
 def soft_button_style():
@@ -1057,7 +1075,11 @@ class POSPage(QWidget):
         search_text = self.search_input.text().strip()
         selected_category = self.category_filter.currentData() or ""
 
-        filtered_products = get_products_for_pos(search_text, selected_category)
+        search_kind = "barcode" if search_text and search_text.isdigit() else "text"
+        with measure_metric(
+            "search", "product_lookup", metadata={"search_kind": search_kind}
+        ):
+            filtered_products = get_products_for_pos(search_text, selected_category)
 
         if not filtered_products:
             empty_label = QLabel(T("No medicines found"))
@@ -1092,7 +1114,8 @@ class POSPage(QWidget):
 
     def add_to_cart(self, product):
         product_id = product["id"]
-        available_stock = get_available_stock(product_id)
+        with measure_metric("cart", "availability_lookup"):
+            available_stock = get_available_stock(product_id)
         already_in_cart = self.cart.get(product_id, {}).get("quantity", 0)
         max_addable = available_stock - already_in_cart
 
@@ -1105,8 +1128,9 @@ class POSPage(QWidget):
             return
 
         dialog = QuantityDialog(product["name"], max_addable, self)
-        if run_centered_modal(dialog, self) != QDialog.DialogCode.Accepted:
-            return
+        with measure_metric("cart", "quantity_selection", metric_kind="interaction"):
+            if run_centered_modal(dialog, self) != QDialog.DialogCode.Accepted:
+                return
 
         quantity_to_add = dialog.get_quantity()
 
@@ -1123,8 +1147,9 @@ class POSPage(QWidget):
             }
 
 
-        self.cart[product_id]["quantity"] += quantity_to_add
-        self.update_cart()
+        with measure_metric("cart", "cart_update"):
+            self.cart[product_id]["quantity"] += quantity_to_add
+            self.update_cart()
 
     def update_cart(self):
 
@@ -1151,103 +1176,144 @@ class POSPage(QWidget):
 
 
     def checkout(self):
-        if not self.cart:
-            QMessageBox.information(
-                self,
-                T("Cart Empty"),
-                T("Please add medicines to the cart first.")
+        item_count = len(self.cart)
+        unit_count = sum(int(item.get("quantity", 0)) for item in self.cart.values())
+        performance = CheckoutPerformance(item_count, unit_count)
+        outcome = "failed"
+        error_category = None
+
+        try:
+            if not self.cart:
+                QMessageBox.information(
+                    self,
+                    T("Cart Empty"),
+                    T("Please add medicines to the cart first.")
+                )
+                error_category = "EmptyCart"
+                return
+
+            with performance.measure("cart_availability"):
+                self.sync_cart_pricing()
+                self.update_cart()
+                cart_items = list(self.cart.values())
+
+            with performance.measure("prescription_check"):
+                identity_required = cart_requires_prescription(cart_items)
+
+            identity_dialog = CustomerIdentityDialog(
+                details_required=identity_required, parent=self
             )
-            return
+            with performance.measure("customer_details", "interaction"):
+                if run_centered_modal(identity_dialog, self) != QDialog.DialogCode.Accepted:
+                    outcome = "cancelled"
+                    return
 
-        self.sync_cart_pricing()
-        self.update_cart()
+            identity = identity_dialog.get_payload()
+            customer_name = identity["customer_name"]
+            customer_ssn = identity["customer_ssn"]
 
-        cart_items = list(self.cart.values())
-
-        identity_required = cart_requires_prescription(cart_items)
-
-        identity_dialog = CustomerIdentityDialog(details_required=identity_required, parent=self)
-        if run_centered_modal(identity_dialog, self) != QDialog.DialogCode.Accepted:
-            return
-
-        identity = identity_dialog.get_payload()
-        customer_name = identity["customer_name"]
-        customer_ssn = identity["customer_ssn"]
-
-        if identity_required and (not customer_name or not customer_ssn):
-            QMessageBox.warning(
-                self,
-                T("Customer Details Required"),
-                T("Customer SSN and name are required because the cart contains prescription products.")
-            )
-            return
-
-        if not identity_required and identity["declined"]:
-            customer_name = None
-            customer_ssn = None
-        elif customer_name or customer_ssn:
-            if not customer_name or not customer_ssn:
+            if identity_required and (not customer_name or not customer_ssn):
                 QMessageBox.warning(
                     self,
-                    T("Incomplete Details"),
-                    T("Please provide both customer name and SSN, or decline.")
+                    T("Customer Details Required"),
+                    T("Customer SSN and name are required because the cart contains prescription products.")
+                )
+                error_category = "MissingCustomerDetails"
+                return
+
+            if not identity_required and identity["declined"]:
+                customer_name = None
+                customer_ssn = None
+            elif customer_name or customer_ssn:
+                if not customer_name or not customer_ssn:
+                    QMessageBox.warning(
+                        self,
+                        T("Incomplete Details"),
+                        T("Please provide both customer name and SSN, or decline.")
+                    )
+                    error_category = "IncompleteCustomerDetails"
+                    return
+
+            if customer_ssn and not is_valid_customer_ssn(customer_ssn):
+                QMessageBox.warning(
+                    self,
+                    T("Invalid SSN"),
+                    T("Customer SSN must contain 9 digits.")
+                )
+                error_category = "InvalidCustomerSSN"
+                return
+
+            try:
+                with performance.measure("fefo_allocation"):
+                    plan, total_amount = preview_sale_allocations(cart_items)
+            except ValueError as error:
+                error_category = type(error).__name__
+                QMessageBox.warning(self, T("Insufficient Stock"), T(str(error)))
+                return
+
+            dialog = BatchPickDialog(plan, total_amount, self)
+            with performance.measure("batch_confirmation", "interaction"):
+                if run_centered_modal(dialog, self) != QDialog.DialogCode.Accepted:
+                    outcome = "cancelled"
+                    return
+
+            payment_dialog = PaymentMethodDialog(total_amount, self)
+            with performance.measure("payment_selection", "interaction"):
+                if run_centered_modal(payment_dialog, self) != QDialog.DialogCode.Accepted:
+                    outcome = "cancelled"
+                    return
+
+            payment_method = payment_dialog.get_payment_method()
+
+            try:
+                with performance.measure(
+                    "transaction",
+                    metadata={"includes_inventory_deduction": True},
+                ):
+                    saved_plan, saved_total = create_sale(
+                        cart_items,
+                        payment_method,
+                        cashier_id=self.current_user.get("id", 1),
+                        acting_username=self.current_user.get("username"),
+                        acting_role=self.current_user.get("role"),
+                        customer_ssn=customer_ssn or None,
+                        customer_name=customer_name or None,
+                        performance_callback=performance.record_phase,
+                    )
+                with performance.measure("receipt_summary"):
+                    receipt_summary = build_receipt_summary(
+                        saved_plan, saved_total, payment_method
+                    )
+            except ValueError as error:
+                error_category = type(error).__name__
+                QMessageBox.warning(self, T("Checkout Failed"), T(str(error)))
+                return
+            except Exception as error:
+                error_category = type(error).__name__
+                QMessageBox.critical(
+                    self,
+                    T("Checkout Failed"),
+                    TF("An unexpected error occurred while saving the sale:\n{error}", error=error)
                 )
                 return
 
-        if customer_ssn and not is_valid_customer_ssn(customer_ssn):
-            QMessageBox.warning(
+            with performance.measure("post_checkout_refresh"):
+                self.cart.clear()
+                self.update_cart()
+                self.refresh_products()
+
+            outcome = "success"
+            performance.finish(outcome)
+            QMessageBox.information(
                 self,
-                T("Invalid SSN"),
-                T("Customer SSN must contain 9 digits.")
+                T("Checkout Complete"),
+                TF(
+                    "Sale saved and FEFO picking instructions confirmed. Total: {total}",
+                    total=format_money(receipt_summary["total"]),
+                )
             )
-            return
-
-        try:
-            plan, total_amount = preview_sale_allocations(cart_items)
-        except ValueError as error:
-            QMessageBox.warning(self, T("Insufficient Stock"), T(str(error)))
-            return
-
-        dialog = BatchPickDialog(plan, total_amount, self)
-        if run_centered_modal(dialog, self) != QDialog.DialogCode.Accepted:
-            return
-
-        payment_dialog = PaymentMethodDialog(total_amount, self)
-        if run_centered_modal(payment_dialog, self) != QDialog.DialogCode.Accepted:
-            return
-
-        payment_method = payment_dialog.get_payment_method()
-
-        try:
-            create_sale(
-                cart_items,
-                payment_method,
-                cashier_id=self.current_user.get("id", 1),
-                acting_username=self.current_user.get("username"),
-                acting_role=self.current_user.get("role"),
-                customer_ssn=customer_ssn or None,
-                customer_name=customer_name or None
-            )
-        except ValueError as error:
-            QMessageBox.warning(self, T("Checkout Failed"), T(str(error)))
-            return
-        except Exception as error:
-            QMessageBox.critical(
-                self,
-                T("Checkout Failed"),
-                TF("An unexpected error occurred while saving the sale:\n{error}", error=error)
-            )
-            return
-
-        self.cart.clear()
-        self.update_cart()
-        self.refresh_products()
-
-        QMessageBox.information(
-            self,
-            T("Checkout Complete"),
-            T("Sale saved and FEFO picking instructions confirmed.")
-        )
+        finally:
+            performance.finish(outcome, error_category)
 
 
 
