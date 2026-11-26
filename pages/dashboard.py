@@ -52,7 +52,11 @@ class NetSalesChart(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def set_points(self, points):
-        self.points = list(points or [])
+        self.points = [
+            (point.get("date"), point.get("net_sales", 0))
+            if isinstance(point, dict) else tuple(point)
+            for point in (points or [])
+        ]
         self.update()
 
     def paintEvent(self, _event):
@@ -64,6 +68,7 @@ class NetSalesChart(QWidget):
         if not values or max(values) <= 0:
             painter.setPen(QColor("#64748b"))
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, T("No sales activity in the last 30 days"))
+            painter.end()
             return
 
         high = max(values)
@@ -103,6 +108,7 @@ class NetSalesChart(QWidget):
             label_left = min(max(x - 45, bounds.left()), bounds.right() - 90)
             painter.drawText(QRectF(label_left, bounds.bottom() + 8, 90, 20),
                              Qt.AlignmentFlag.AlignCenter, format_date(self.points[index][0]))
+        painter.end()
 
 
 class DashboardPage(QWidget):

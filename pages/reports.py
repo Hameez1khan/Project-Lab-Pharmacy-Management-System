@@ -2,7 +2,7 @@ from PyQt6.QtCore import QDate, Qt
 from PyQt6.QtWidgets import (
     QAbstractItemView, QComboBox, QDateEdit, QFileDialog, QFrame, QGridLayout,
     QHeaderView, QHBoxLayout, QLabel, QMessageBox, QPushButton, QStackedWidget,
-    QStyle, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QApplication, QStyle, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 from database.reporting import report_data
 from i18n import T, TF, format_money, format_number
@@ -111,6 +111,8 @@ class ReportsPage(QWidget):
             footer = QHBoxLayout()
             footer.addWidget(QLabel(T("Pharmacy data")))
             footer.addStretch()
+            footer.addWidget(self.button("Backup database", "SP_DialogSaveButton", self.backup_database))
+            footer.addWidget(self.button("Restore database", "SP_DialogOpenButton", self.restore_database))
             footer.addWidget(self.button("Export data", "SP_DialogSaveButton", self.save_data))
             footer.addWidget(self.button("Merge data", "SP_DialogOpenButton", self.merge))
             layout.addLayout(footer)
@@ -229,6 +231,60 @@ class ReportsPage(QWidget):
     def save_data(self):
         from database.workbook import export_book
         self.file_action("Export private pharmacy data", export_book)
+
+    def backup_database(self):
+        from database.backup import create_database_backup
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, T("Backup database"), "", T("SQLite Database (*.db)")
+        )
+        if not path:
+            return
+        if not path.lower().endswith(".db"):
+            path += ".db"
+        try:
+            create_database_backup(path)
+        except Exception as error:
+            QMessageBox.warning(
+                self, T("Backup database"),
+                TF("Database backup failed: {error}", error=error),
+            )
+            return
+        QMessageBox.information(
+            self, T("Backup database"), T("Database backup created successfully."),
+        )
+
+    def restore_database(self):
+        from database.backup import restore_database
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, T("Restore database"), "", T("SQLite Database (*.db)")
+        )
+        if not path:
+            return
+        answer = QMessageBox.question(
+            self,
+            T("Restore database"),
+            T("Restoring will replace the current database. A safety backup will be created and the application will close. Continue?"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            safety_path = restore_database(path)
+        except Exception as error:
+            QMessageBox.warning(
+                self, T("Restore database"),
+                TF("Database restore failed: {error}", error=error),
+            )
+            return
+        QMessageBox.information(
+            self,
+            T("Restore database"),
+            TF("Database restored successfully. Safety backup: {path}", path=safety_path),
+        )
+        QApplication.quit()
 
     def merge(self):
         from database.workbook import import_book

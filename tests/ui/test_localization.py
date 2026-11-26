@@ -74,10 +74,11 @@ class LocalizationTests(unittest.TestCase):
         chart = NetSalesChart()
         chart.resize(900, 260)
         chart.set_points([
-            ("2026-11-01", 1200),
-            ("2026-11-02", 1800),
-            ("2026-11-03", 900),
+            {"date": "2026-11-01", "net_sales": 1200},
+            {"date": "2026-11-02", "net_sales": 1800},
+            {"date": "2026-11-03", "net_sales": 900},
         ])
+        self.assertEqual(("2026-11-01", 1200), chart.points[0])
         image = chart.grab().toImage()
         colors = {
             image.pixelColor(x, y).name()

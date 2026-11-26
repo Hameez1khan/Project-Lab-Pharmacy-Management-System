@@ -61,6 +61,12 @@ Export data|Adatok exportálása|تصدير البيانات
 Merge data|Adatok egyesítése|دمج البيانات
 Backup database|Adatbázis mentése|نسخ قاعدة البيانات احتياطيًا
 Restore database|Adatbázis visszaállítása|استعادة قاعدة البيانات
+SQLite Database (*.db)|SQLite-adatbázis (*.db)|قاعدة بيانات SQLite (*.db)
+Database backup created successfully.|Az adatbázis biztonsági mentése elkészült.|تم إنشاء نسخة احتياطية لقاعدة البيانات بنجاح.
+Database backup failed: {error}|Az adatbázis mentése sikertelen: {error}|فشل النسخ الاحتياطي لقاعدة البيانات: {error}
+Restoring will replace the current database. A safety backup will be created and the application will close. Continue?|A visszaállítás lecseréli a jelenlegi adatbázist. Biztonsági mentés készül, majd az alkalmazás bezárul. Folytatja?|ستستبدل الاستعادة قاعدة البيانات الحالية. سيتم إنشاء نسخة أمان ثم إغلاق التطبيق. هل تريد المتابعة؟
+Database restore failed: {error}|Az adatbázis visszaállítása sikertelen: {error}|فشلت استعادة قاعدة البيانات: {error}
+Database restored successfully. Safety backup: {path}|Az adatbázis visszaállítása sikeres. Biztonsági mentés: {path}|تمت استعادة قاعدة البيانات بنجاح. نسخة الأمان: {path}
 Pharmacy data|Gyógyszertári adatok|بيانات الصيدلية
 No matching records.|Nincs találat.|لا توجد سجلات مطابقة.
 No activity in this period|Nincs forgalom ebben az időszakban|لا يوجد نشاط في هذه الفترة

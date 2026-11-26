@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QFrame, QSizePolicy, QComboBox
 )
-from database.db import add_audit_log, get_connection, get_password_manageable_users
+from database.db import change_user_password, get_connection, get_password_manageable_users
 from i18n import T, TF
 
 from pathlib import Path
@@ -324,41 +324,25 @@ class SettingsPage(QWidget):
             self.show_message(T("Password must be at least 4 characters long"), False)
             return
 
-        conn = get_connection()
-        cursor = conn.cursor()
+        success, message = change_user_password(
+            target_user,
+            current,
+            new,
+            acting_username=self.current_user.get("username") or "admin",
+            acting_role=self.current_user.get("role"),
+        )
 
-        cursor.execute("SELECT password FROM users WHERE username = ?", (target_user,))
-        result = cursor.fetchone()
-
-        if not result:
-            conn.close()
-            self.show_message(T("Selected user account not found"), False)
-            return
-
-        if current != result[0]:
-            conn.close()
+        if not success:
             selected_role = self.get_selected_user_role()
-            if selected_role == "admin":
+            if "incorrect" in message.casefold() and selected_role == "admin":
                 self.show_message(T("Admin current password is incorrect"), False)
-            else:
+            elif "incorrect" in message.casefold():
                 self.show_message(T("Pharmacist current password is incorrect"), False)
+            elif "not found" in message.casefold():
+                self.show_message(T("Selected user account not found"), False)
+            else:
+                self.show_message(T(message), False)
             return
-
-        cursor.execute(
-            "UPDATE users SET password = ? WHERE username = ?",
-            (new, target_user)
-        )
-
-        add_audit_log(
-            self.current_user.get("username") or "admin",
-            f"Updated password for {target_user}",
-            role=self.current_user.get("role"),
-            conn=conn,
-            cursor=cursor
-        )
-
-        conn.commit()
-        conn.close()
 
         self.show_message(TF("Password updated successfully for {username}.", username=target_user), True)
 
