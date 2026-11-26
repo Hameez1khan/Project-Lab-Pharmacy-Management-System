@@ -5,10 +5,11 @@ from datetime import datetime
 from openpyxl import load_workbook
 
 from database.backup import create_database_backup, restore_database, validate_database_file
-from database.db import get_connection, receive_purchase, save_supplier
+from database.db import get_connection, receive_purchase, save_purchase_order, save_supplier
 from database.inventory_audit import operator
 from database.workbook import (
-    LEGACY_TABLES, TABLES, TECH_PREFIX, VERSION_V1, VERSION_V2, VERSION_V3,
+    LEGACY_TABLES, TABLES, TECH_PREFIX, V3_TABLES, VERSION_V1, VERSION_V2,
+    VERSION_V3, VERSION_V4,
     export_book, import_book,
 )
 from tests.backend.base import DatabaseTestCase
@@ -23,14 +24,20 @@ class WorkbookAndBackupTests(DatabaseTestCase):
         operator.reset(self.operator_token)
         super().tearDown()
 
-    def test_v3_export_has_business_sheets_hidden_data_and_no_password(self):
+    def test_v4_export_has_business_sheets_hidden_data_and_no_password(self):
         product_id = self.add_product()
         success, message = save_supplier("Workbook Supplier", acting_username="admin", acting_role="admin")
         self.assertTrue(success, message)
         with closing(get_connection()) as conn:
             supplier_id = conn.execute("SELECT id FROM suppliers").fetchone()[0]
+        today = datetime.now().date().isoformat()
+        save_purchase_order(
+            supplier_id, today, "2099-12-01",
+            [{"product_id": product_id, "quantity": 12, "unit_cost": 25}],
+            status="pending", acting_username="admin", acting_role="admin",
+        )
         receive_purchase(
-            supplier_id, "WB-001", datetime.now().date().isoformat(), [{
+            supplier_id, "WB-001", today, [{
                 "product_id": product_id, "batch_number": "WB-BATCH",
                 "expiry_date": "2099-12-31", "quantity": 4, "unit_cost": "25.00",
             }], acting_username="admin", acting_role="admin",
@@ -40,21 +47,37 @@ class WorkbookAndBackupTests(DatabaseTestCase):
         book = load_workbook(path, data_only=False)
         self.assertIn("Overview", book.sheetnames)
         self.assertIn("Inventory", book.sheetnames)
-        self.assertEqual(book["Manifest"]["A1"].value, VERSION_V3)
+        self.assertEqual(book["Manifest"]["A1"].value, VERSION_V4)
         self.assertIn("Suppliers", book.sheetnames)
         self.assertIn("Purchases", book.sheetnames)
         self.assertIn("Purchase Items", book.sheetnames)
+        self.assertIn("Purchase Orders", book.sheetnames)
+        self.assertIn("Order Items", book.sheetnames)
         self.assertEqual(book["Suppliers"]["A2"].value, 1)
         self.assertEqual(book["Purchases"]["C2"].value, "WB-001")
         self.assertEqual(book["Purchase Items"]["E2"].value, "WB-BATCH")
+        self.assertTrue(book["Purchase Orders"]["B2"].value.startswith("PO-"))
+        self.assertEqual(book["Order Items"]["D2"].value, 12)
         self.assertEqual(book[TECH_PREFIX + "purchase_receipts"].sheet_state, "hidden")
         self.assertEqual(book[TECH_PREFIX + "users"].sheet_state, "hidden")
         self.assertNotIn("password", [c.value for c in book[TECH_PREFIX + "users"][1]])
         self.assertEqual(book["Products"]["A2"].value, 1)
         book.close()
 
-    def test_v3_duplicate_import_skips_and_conflict_rolls_back(self):
-        self.add_product()
+    def test_v4_duplicate_import_skips_and_conflict_rolls_back(self):
+        product_id = self.add_product()
+        success, message = save_supplier(
+            "Empty Notes Supplier", acting_username="admin", acting_role="admin"
+        )
+        self.assertTrue(success, message)
+        with closing(get_connection()) as conn:
+            supplier_id = conn.execute("SELECT id FROM suppliers").fetchone()[0]
+        receive_purchase(
+            supplier_id, "EMPTY-NOTES", datetime.now().date().isoformat(), [{
+                "product_id": product_id, "batch_number": "EMPTY-NOTES-BATCH",
+                "expiry_date": "2099-12-31", "quantity": 1, "unit_cost": "25.00",
+            }], notes="", acting_username="admin", acting_role="admin",
+        )
         path = Path(self.temp_dir.name) / "export.xlsx"
         export_book(path)
         added, skipped = import_book(path)
@@ -113,6 +136,46 @@ class WorkbookAndBackupTests(DatabaseTestCase):
         for row in range(manifest.max_row, 1, -1):
             if manifest.cell(row, 1).value not in LEGACY_TABLES:
                 manifest.delete_rows(row)
+        book.save(path)
+        book.close()
+        added, skipped = import_book(path)
+        self.assertEqual(added, 0)
+        self.assertGreater(skipped, 0)
+
+    def test_existing_v3_workbook_without_order_columns_remains_importable(self):
+        product_id = self.add_product()
+        success, message = save_supplier(
+            "Legacy Purchase Supplier", acting_username="admin", acting_role="admin"
+        )
+        self.assertTrue(success, message)
+        with closing(get_connection()) as conn:
+            supplier_id = conn.execute("SELECT id FROM suppliers").fetchone()[0]
+        receive_purchase(
+            supplier_id, "LEGACY-V3-RECEIPT", datetime.now().date().isoformat(), [{
+                "product_id": product_id, "batch_number": "LEGACY-V3-BATCH",
+                "expiry_date": "2099-12-31", "quantity": 3, "unit_cost": "25.00",
+            }], acting_username="admin", acting_role="admin",
+        )
+        path = Path(self.temp_dir.name) / "legacy-v3.xlsx"
+        export_book(path)
+        book = load_workbook(path)
+        manifest = book["Manifest"]
+        manifest["A1"] = VERSION_V3
+        for table in set(TABLES) - set(V3_TABLES):
+            book.remove(book[TECH_PREFIX + table])
+        for row in range(manifest.max_row, 1, -1):
+            if manifest.cell(row, 1).value not in V3_TABLES:
+                manifest.delete_rows(row)
+        legacy_columns = {
+            "suppliers": {"lead_time_days"},
+            "purchase_receipts": {"purchase_order_id"},
+            "purchase_receipt_items": {"purchase_order_item_id"},
+        }
+        for table, removed in legacy_columns.items():
+            sheet = book[TECH_PREFIX + table]
+            headers = [cell.value for cell in sheet[1]]
+            for column in sorted((headers.index(name) + 1 for name in removed), reverse=True):
+                sheet.delete_cols(column)
         book.save(path)
         book.close()
         added, skipped = import_book(path)

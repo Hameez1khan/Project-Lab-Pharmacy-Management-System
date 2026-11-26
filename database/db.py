@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import sqlite3
+import time
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -401,6 +402,47 @@ def initialize_database():
     )
     """)
 
+    supplier_columns = {
+        row["name"] for row in cursor.execute("PRAGMA table_info(suppliers)").fetchall()
+    }
+    if "lead_time_days" not in supplier_columns:
+        cursor.execute(
+            "ALTER TABLE suppliers ADD COLUMN lead_time_days INTEGER NOT NULL DEFAULT 7"
+        )
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS purchase_orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_number TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        supplier_id INTEGER NOT NULL,
+        order_date TEXT NOT NULL,
+        expected_date TEXT,
+        status TEXT NOT NULL DEFAULT 'draft'
+            CHECK(status IN ('draft','pending','ordered','partially_received',
+                             'fully_received','cancelled')),
+        notes TEXT,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE RESTRICT
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS purchase_order_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        purchase_order_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        ordered_quantity INTEGER NOT NULL CHECK(ordered_quantity > 0),
+        received_quantity INTEGER NOT NULL DEFAULT 0
+            CHECK(received_quantity >= 0 AND received_quantity <= ordered_quantity),
+        unit_cost REAL NOT NULL CHECK(unit_cost > 0),
+        FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
+        UNIQUE(purchase_order_id, product_id)
+    )
+    """)
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS purchase_receipts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -413,6 +455,15 @@ def initialize_database():
         FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE RESTRICT
     )
     """)
+
+    receipt_columns = {
+        row["name"] for row in cursor.execute("PRAGMA table_info(purchase_receipts)").fetchall()
+    }
+    if "purchase_order_id" not in receipt_columns:
+        cursor.execute(
+            "ALTER TABLE purchase_receipts ADD COLUMN purchase_order_id INTEGER "
+            "REFERENCES purchase_orders(id) ON DELETE RESTRICT"
+        )
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS purchase_receipt_items (
@@ -429,6 +480,24 @@ def initialize_database():
         FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
         FOREIGN KEY (batch_id) REFERENCES batches(id) ON DELETE RESTRICT
     )
+    """)
+
+    receipt_item_columns = {
+        row["name"] for row in cursor.execute("PRAGMA table_info(purchase_receipt_items)").fetchall()
+    }
+    if "purchase_order_item_id" not in receipt_item_columns:
+        cursor.execute(
+            "ALTER TABLE purchase_receipt_items ADD COLUMN purchase_order_item_id INTEGER "
+            "REFERENCES purchase_order_items(id) ON DELETE RESTRICT"
+        )
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_purchase_orders_supplier_status
+        ON purchase_orders(supplier_id, status)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_purchase_receipts_order
+        ON purchase_receipts(purchase_order_id)
     """)
 
     cursor.execute("""
@@ -800,7 +869,7 @@ def get_suppliers(search_text=""):
     conn = get_connection()
     pattern = f"%{search_text.strip().lower()}%"
     rows = conn.execute("""
-        SELECT id, name, contact_person, phone, email, address, created_at
+        SELECT id, name, contact_person, phone, email, address, lead_time_days, created_at
         FROM suppliers
         WHERE LOWER(name) LIKE ?
            OR LOWER(COALESCE(contact_person, '')) LIKE ?
@@ -813,37 +882,47 @@ def get_suppliers(search_text=""):
 
 
 def save_supplier(name, contact_person="", phone="", email="", address="",
-                  supplier_id=None, acting_username=None, acting_role=None):
+                  supplier_id=None, acting_username=None, acting_role=None,
+                  lead_time_days=7):
+    _require_purchase_admin(acting_role)
     name = str(name or "").strip()
     contact_person = str(contact_person or "").strip()
     phone = str(phone or "").strip()
     email = str(email or "").strip()
     address = str(address or "").strip()
+    try:
+        lead_time_days = int(lead_time_days)
+    except (TypeError, ValueError):
+        return False, "Supplier lead time must be a whole number of days."
     if not name:
         return False, "Supplier name is required."
     if len(name) > 120 or any(len(value) > 250 for value in (contact_person, phone, email, address)):
         return False, "Supplier details are too long."
     if email and ("@" not in email or email.startswith("@") or email.endswith("@")):
         return False, "Enter a valid email address."
+    if not 0 <= lead_time_days <= 365:
+        return False, "Supplier lead time must be between 0 and 365 days."
 
     conn = get_connection("Supplier record updated")
     cursor = conn.cursor()
     try:
         if supplier_id is None:
             cursor.execute("""
-                INSERT INTO suppliers(name, contact_person, phone, email, address, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO suppliers(name, contact_person, phone, email, address,
+                                      lead_time_days, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (name, contact_person, phone, email, address,
-                  datetime.now().strftime("%Y-%m-%d %H:%M")))
+                  lead_time_days, datetime.now().strftime("%Y-%m-%d %H:%M")))
             description = f"Added supplier {name}"
         else:
             if not cursor.execute("SELECT 1 FROM suppliers WHERE id=?", (supplier_id,)).fetchone():
                 return False, "Supplier was not found."
             cursor.execute("""
                 UPDATE suppliers
-                SET name=?, contact_person=?, phone=?, email=?, address=?
+                SET name=?, contact_person=?, phone=?, email=?, address=?, lead_time_days=?
                 WHERE id=?
-            """, (name, contact_person, phone, email, address, int(supplier_id)))
+            """, (name, contact_person, phone, email, address, lead_time_days,
+                  int(supplier_id)))
             description = f"Updated supplier {name}"
         add_audit_log(acting_username or "System", description, acting_role,
                       conn=conn, cursor=cursor)
@@ -857,6 +936,7 @@ def save_supplier(name, contact_person="", phone="", email="", address="",
 
 
 def delete_supplier(supplier_id, acting_username=None, acting_role=None):
+    _require_purchase_admin(acting_role)
     conn = get_connection("Supplier removed")
     cursor = conn.cursor()
     supplier = cursor.execute(
@@ -870,6 +950,11 @@ def delete_supplier(supplier_id, acting_username=None, acting_role=None):
     ).fetchone():
         conn.close()
         return False, "Suppliers with purchase history cannot be deleted."
+    if cursor.execute(
+        "SELECT 1 FROM purchase_orders WHERE supplier_id=? LIMIT 1", (int(supplier_id),)
+    ).fetchone():
+        conn.close()
+        return False, "Suppliers with purchase orders cannot be deleted."
     cursor.execute("DELETE FROM suppliers WHERE id=?", (int(supplier_id),))
     add_audit_log(acting_username or "System", f"Deleted supplier {supplier['name']}",
                   acting_role, conn=conn, cursor=cursor)
@@ -879,7 +964,8 @@ def delete_supplier(supplier_id, acting_username=None, acting_role=None):
 
 
 def receive_purchase(supplier_id, reference_number, received_date, items, notes="",
-                     acting_username=None, acting_role=None):
+                     acting_username=None, acting_role=None, purchase_order_id=None):
+    _require_purchase_admin(acting_role)
     reference_number = str(reference_number or "").strip()
     received_date = str(received_date or "").strip()
     notes = str(notes or "").strip()
@@ -923,6 +1009,7 @@ def receive_purchase(supplier_id, reference_number, received_date, items, notes=
             "expiry_date": expiry.isoformat(),
             "quantity": quantity,
             "unit_cost": float(unit_cost),
+            "purchase_order_item_id": item.get("purchase_order_item_id"),
         })
 
     conn = get_connection(f"Purchase receipt {reference_number}")
@@ -934,6 +1021,18 @@ def receive_purchase(supplier_id, reference_number, received_date, items, notes=
         ).fetchone()
         if not supplier:
             raise ValueError("Choose a valid supplier.")
+        order = None
+        if purchase_order_id is not None:
+            order = cursor.execute(
+                "SELECT id, supplier_id, order_number, status FROM purchase_orders WHERE id=?",
+                (int(purchase_order_id),),
+            ).fetchone()
+            if not order:
+                raise ValueError("Purchase order was not found.")
+            if int(order["supplier_id"]) != supplier_id:
+                raise ValueError("The receipt supplier does not match the purchase order.")
+            if order["status"] not in ("ordered", "partially_received"):
+                raise ValueError("Only ordered or partially received orders can be received.")
         if cursor.execute(
             "SELECT 1 FROM purchase_receipts WHERE reference_number=? COLLATE NOCASE",
             (reference_number,),
@@ -943,13 +1042,30 @@ def receive_purchase(supplier_id, reference_number, received_date, items, notes=
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
         cursor.execute("""
             INSERT INTO purchase_receipts
-                (supplier_id, reference_number, received_date, notes, received_by, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (supplier_id, reference_number, received_date, notes, received_by,
+                 created_at, purchase_order_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (supplier_id, reference_number, received_date, notes,
-              (acting_username or "System").strip(), now))
+              (acting_username or "System").strip(), now, purchase_order_id))
         receipt_id = cursor.lastrowid
 
         for item in normalized:
+            order_item = None
+            if order:
+                try:
+                    order_item_id = int(item["purchase_order_item_id"])
+                except (TypeError, ValueError) as error:
+                    raise ValueError("Every received line must belong to the purchase order.") from error
+                order_item = cursor.execute("""
+                    SELECT id, product_id, ordered_quantity, received_quantity, unit_cost
+                    FROM purchase_order_items
+                    WHERE id=? AND purchase_order_id=?
+                """, (order_item_id, order["id"])).fetchone()
+                if not order_item or int(order_item["product_id"]) != item["product_id"]:
+                    raise ValueError("A received line does not match the purchase order.")
+                outstanding = int(order_item["ordered_quantity"]) - int(order_item["received_quantity"])
+                if item["quantity"] > outstanding:
+                    raise ValueError("Received quantity exceeds the outstanding order quantity.")
             product = cursor.execute(
                 "SELECT name FROM products WHERE id=?", (item["product_id"],)
             ).fetchone()
@@ -988,10 +1104,36 @@ def receive_purchase(supplier_id, reference_number, received_date, items, notes=
             cursor.execute("""
                 INSERT INTO purchase_receipt_items
                     (receipt_id, product_id, batch_id, batch_number, expiry_date,
-                     quantity, unit_cost, total_cost)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                     quantity, unit_cost, total_cost, purchase_order_item_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (receipt_id, item["product_id"], batch_id, item["batch_number"],
-                  item["expiry_date"], item["quantity"], item["unit_cost"], line_total))
+                  item["expiry_date"], item["quantity"], item["unit_cost"], line_total,
+                  order_item["id"] if order_item else None))
+            if order_item:
+                cursor.execute("""
+                    UPDATE purchase_order_items
+                    SET received_quantity=received_quantity+?
+                    WHERE id=? AND received_quantity+? <= ordered_quantity
+                """, (item["quantity"], order_item["id"], item["quantity"]))
+                if cursor.rowcount != 1:
+                    raise ValueError("Purchase order quantities changed. Refresh and try again.")
+
+        if order:
+            remaining = cursor.execute("""
+                SELECT COALESCE(SUM(ordered_quantity-received_quantity), 0)
+                FROM purchase_order_items WHERE purchase_order_id=?
+            """, (order["id"],)).fetchone()[0]
+            received = cursor.execute("""
+                SELECT COALESCE(SUM(received_quantity), 0)
+                FROM purchase_order_items WHERE purchase_order_id=?
+            """, (order["id"],)).fetchone()[0]
+            new_status = "fully_received" if int(remaining) == 0 else "partially_received"
+            if int(received) == 0:
+                new_status = "ordered"
+            cursor.execute(
+                "UPDATE purchase_orders SET status=?, updated_at=? WHERE id=?",
+                (new_status, now, order["id"]),
+            )
 
         total_quantity = sum(item["quantity"] for item in normalized)
         add_audit_log(
@@ -1050,6 +1192,369 @@ def get_purchase_receipt(receipt_id):
     """, (int(receipt_id),)).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+PURCHASE_ORDER_STATUSES = (
+    "draft", "pending", "ordered", "partially_received", "fully_received", "cancelled"
+)
+
+
+def _require_purchase_admin(acting_role):
+    if str(acting_role or "").strip().lower() != "admin":
+        raise PermissionError("Administrator access required.")
+
+
+def _normalize_purchase_order_items(items):
+    if not items:
+        raise ValueError("Add at least one purchase order item.")
+    normalized = []
+    products = set()
+    for item in items:
+        try:
+            product_id = int(item.get("product_id"))
+            quantity = int(item.get("quantity"))
+            unit_cost = Decimal(str(item.get("unit_cost")))
+        except (TypeError, ValueError, InvalidOperation) as error:
+            raise ValueError("Check the product, quantity, and cost on every order line.") from error
+        if product_id in products:
+            raise ValueError("Each product can appear only once on a purchase order.")
+        if not 1 <= quantity <= 1_000_000:
+            raise ValueError("Ordered quantities must be positive whole numbers.")
+        if (not unit_cost.is_finite() or not Decimal("0") < unit_cost <= Decimal("999999999")
+                or unit_cost != unit_cost.quantize(Decimal("0.01"))):
+            raise ValueError("Purchase costs must be positive with at most two decimal places.")
+        products.add(product_id)
+        normalized.append({
+            "product_id": product_id,
+            "quantity": quantity,
+            "unit_cost": float(unit_cost),
+        })
+    return normalized
+
+
+def save_purchase_order(supplier_id, order_date, expected_date, items, notes="",
+                        status="draft", purchase_order_id=None,
+                        acting_username=None, acting_role=None):
+    """Create or edit a pre-delivery order without changing inventory."""
+    _require_purchase_admin(acting_role)
+    try:
+        supplier_id = int(supplier_id)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Choose a valid supplier.") from error
+    try:
+        order_day = datetime.strptime(str(order_date), "%Y-%m-%d").date()
+        expected_day = datetime.strptime(str(expected_date), "%Y-%m-%d").date()
+    except ValueError as error:
+        raise ValueError("Enter valid order and expected delivery dates.") from error
+    if expected_day < order_day:
+        raise ValueError("Expected delivery cannot be before the order date.")
+    if status not in ("draft", "pending"):
+        raise ValueError("New purchase orders must be draft or pending.")
+    normalized = _normalize_purchase_order_items(items)
+    notes = str(notes or "").strip()
+    if len(notes) > 2000:
+        raise ValueError("Purchase order notes are too long.")
+
+    conn = get_connection("Purchase order saved")
+    cursor = conn.cursor()
+    try:
+        cursor.execute("BEGIN IMMEDIATE")
+        supplier = cursor.execute(
+            "SELECT name FROM suppliers WHERE id=?", (supplier_id,)
+        ).fetchone()
+        if not supplier:
+            raise ValueError("Choose a valid supplier.")
+        product_ids = {row["id"] for row in cursor.execute(
+            f"SELECT id FROM products WHERE id IN ({','.join('?' for _ in normalized)})",
+            tuple(item["product_id"] for item in normalized),
+        ).fetchall()}
+        if product_ids != {item["product_id"] for item in normalized}:
+            raise ValueError("A selected product no longer exists.")
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        if purchase_order_id is None:
+            next_id = int(cursor.execute(
+                "SELECT COALESCE(MAX(id), 0) + 1 FROM purchase_orders"
+            ).fetchone()[0])
+            order_number = f"PO-{order_day.strftime('%Y%m%d')}-{next_id:04d}"
+            cursor.execute("""
+                INSERT INTO purchase_orders
+                    (order_number, supplier_id, order_date, expected_date, status,
+                     notes, created_by, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (order_number, supplier_id, order_day.isoformat(), expected_day.isoformat(),
+                  status, notes, (acting_username or "System").strip(), now, now))
+            purchase_order_id = cursor.lastrowid
+            action = "Created"
+        else:
+            purchase_order_id = int(purchase_order_id)
+            existing = cursor.execute(
+                "SELECT order_number, status FROM purchase_orders WHERE id=?",
+                (purchase_order_id,),
+            ).fetchone()
+            if not existing:
+                raise ValueError("Purchase order was not found.")
+            if existing["status"] not in ("draft", "pending"):
+                raise ValueError("Only draft or pending purchase orders can be edited.")
+            order_number = existing["order_number"]
+            cursor.execute("""
+                UPDATE purchase_orders
+                SET supplier_id=?, order_date=?, expected_date=?, status=?, notes=?, updated_at=?
+                WHERE id=?
+            """, (supplier_id, order_day.isoformat(), expected_day.isoformat(), status,
+                  notes, now, purchase_order_id))
+            cursor.execute(
+                "DELETE FROM purchase_order_items WHERE purchase_order_id=?",
+                (purchase_order_id,),
+            )
+            action = "Updated"
+        cursor.executemany("""
+            INSERT INTO purchase_order_items
+                (purchase_order_id, product_id, ordered_quantity, received_quantity, unit_cost)
+            VALUES (?, ?, ?, 0, ?)
+        """, [
+            (purchase_order_id, item["product_id"], item["quantity"], item["unit_cost"])
+            for item in normalized
+        ])
+        add_audit_log(
+            acting_username or "System",
+            f"{action} purchase order {order_number} for {supplier['name']}",
+            acting_role, conn=conn, cursor=cursor,
+        )
+        conn.commit()
+        return purchase_order_id, order_number
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def change_purchase_order_status(purchase_order_id, new_status,
+                                 acting_username=None, acting_role=None):
+    _require_purchase_admin(acting_role)
+    transitions = {
+        "draft": {"pending", "cancelled"},
+        "pending": {"draft", "ordered", "cancelled"},
+        "ordered": {"cancelled"},
+        "partially_received": set(),
+        "fully_received": set(),
+        "cancelled": set(),
+    }
+    if new_status not in PURCHASE_ORDER_STATUSES:
+        raise ValueError("Invalid purchase order status.")
+    conn = get_connection("Purchase order status changed")
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        order = conn.execute(
+            "SELECT order_number, status FROM purchase_orders WHERE id=?",
+            (int(purchase_order_id),),
+        ).fetchone()
+        if not order:
+            raise ValueError("Purchase order was not found.")
+        if new_status == "cancelled":
+            received = conn.execute("""
+                SELECT COALESCE(SUM(received_quantity), 0) FROM purchase_order_items
+                WHERE purchase_order_id=?
+            """, (int(purchase_order_id),)).fetchone()[0]
+            if int(received):
+                raise ValueError("A purchase order with received stock cannot be cancelled.")
+        if new_status not in transitions[order["status"]]:
+            raise ValueError("This purchase order status change is not allowed.")
+        conn.execute(
+            "UPDATE purchase_orders SET status=?, updated_at=? WHERE id=?",
+            (new_status, datetime.now().strftime("%Y-%m-%d %H:%M"), int(purchase_order_id)),
+        )
+        add_audit_log(
+            acting_username or "System",
+            f"Changed purchase order {order['order_number']} from {order['status']} to {new_status}",
+            acting_role, conn=conn, cursor=conn.cursor(),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def get_purchase_orders(search_text="", status="all", supplier_id=None):
+    pattern = f"%{str(search_text or '').strip().lower()}%"
+    clauses = ["(LOWER(o.order_number) LIKE ? OR LOWER(s.name) LIKE ?)"]
+    parameters = [pattern, pattern]
+    if status and status != "all":
+        clauses.append("o.status=?")
+        parameters.append(status)
+    if supplier_id is not None:
+        clauses.append("o.supplier_id=?")
+        parameters.append(int(supplier_id))
+    conn = get_connection()
+    rows = conn.execute(f"""
+        SELECT o.id, o.order_number, o.supplier_id, s.name AS supplier,
+               o.order_date, o.expected_date, o.status, o.created_by,
+               COUNT(i.id) AS line_count,
+               COALESCE(SUM(i.ordered_quantity), 0) AS ordered_quantity,
+               COALESCE(SUM(i.received_quantity), 0) AS received_quantity,
+               COALESCE(SUM((i.ordered_quantity-i.received_quantity)), 0) AS outstanding_quantity,
+               COALESCE(SUM(i.ordered_quantity*i.unit_cost), 0) AS total_cost
+        FROM purchase_orders o
+        JOIN suppliers s ON s.id=o.supplier_id
+        LEFT JOIN purchase_order_items i ON i.purchase_order_id=o.id
+        WHERE {' AND '.join(clauses)}
+        GROUP BY o.id
+        ORDER BY o.order_date DESC, o.id DESC
+    """, parameters).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_purchase_order(purchase_order_id):
+    conn = get_connection()
+    order = conn.execute("""
+        SELECT o.*, s.name AS supplier, s.lead_time_days
+        FROM purchase_orders o JOIN suppliers s ON s.id=o.supplier_id
+        WHERE o.id=?
+    """, (int(purchase_order_id),)).fetchone()
+    items = conn.execute("""
+        SELECT i.id, i.product_id, p.name AS product, i.ordered_quantity,
+               i.received_quantity, i.ordered_quantity-i.received_quantity AS outstanding_quantity,
+               i.unit_cost, i.ordered_quantity*i.unit_cost AS total_cost
+        FROM purchase_order_items i JOIN products p ON p.id=i.product_id
+        WHERE i.purchase_order_id=? ORDER BY i.id
+    """, (int(purchase_order_id),)).fetchall()
+    receipts = conn.execute("""
+        SELECT id, reference_number, received_date, received_by
+        FROM purchase_receipts WHERE purchase_order_id=? ORDER BY id
+    """, (int(purchase_order_id),)).fetchall()
+    conn.close()
+    return ((dict(order), [dict(row) for row in items], [dict(row) for row in receipts])
+            if order else (None, [], []))
+
+
+def get_reorder_suggestions(period_days=30, safety_days=7, supplier_id=None):
+    try:
+        period_days, safety_days = int(period_days), int(safety_days)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Sales period and safety stock must be whole numbers of days.") from error
+    if period_days not in (7, 30, 60, 90):
+        raise ValueError("Sales period must be 7, 30, 60, or 90 days.")
+    if not 0 <= safety_days <= 365:
+        raise ValueError("Safety stock days must be between 0 and 365.")
+    start = (datetime.now().date() - timedelta(days=period_days - 1)).isoformat()
+    conn = get_connection()
+    selected_supplier_id = int(supplier_id) if supplier_id is not None else None
+    parameters = [start, start, selected_supplier_id, selected_supplier_id]
+    rows = conn.execute(f"""
+        WITH sold AS (
+            SELECT si.product_id, COALESCE(SUM(si.quantity), 0) AS quantity
+            FROM sale_items si JOIN sales s ON s.id=si.sale_id
+            WHERE date(s.sale_datetime) >= date(?) GROUP BY si.product_id
+        ), returned AS (
+            SELECT ri.product_id, COALESCE(SUM(ri.quantity), 0) AS quantity
+            FROM return_items ri JOIN returns r ON r.id=ri.return_id
+            WHERE date(r.return_datetime) >= date(?) GROUP BY ri.product_id
+        ), stock AS (
+            SELECT product_id, COALESCE(SUM(quantity), 0) AS quantity
+            FROM batches WHERE quantity>0 AND date(expiry_date)>=date('now') GROUP BY product_id
+        ), outstanding AS (
+            SELECT i.product_id, COALESCE(SUM(i.ordered_quantity-i.received_quantity), 0) AS quantity
+            FROM purchase_order_items i JOIN purchase_orders o ON o.id=i.purchase_order_id
+            WHERE o.status IN ('pending','ordered','partially_received') GROUP BY i.product_id
+        ), preferred AS (
+            SELECT product_id, supplier_id AS preferred_supplier_id FROM (
+                SELECT i.product_id, r.supplier_id,
+                       ROW_NUMBER() OVER (PARTITION BY i.product_id ORDER BY r.received_date DESC, r.id DESC) AS rn
+                FROM purchase_receipt_items i JOIN purchase_receipts r ON r.id=i.receipt_id
+            ) WHERE rn=1
+        ), costs AS (
+            SELECT product_id, purchase_unit_cost FROM (
+                SELECT product_id, purchase_unit_cost,
+                       ROW_NUMBER() OVER (PARTITION BY product_id ORDER BY id DESC) AS rn
+                FROM batches
+            ) WHERE rn=1
+        ), supplier_costs AS (
+            SELECT product_id, supplier_id, unit_cost FROM (
+                SELECT i.product_id, r.supplier_id, i.unit_cost,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY i.product_id, r.supplier_id
+                           ORDER BY r.received_date DESC, r.id DESC, i.id DESC
+                       ) AS rn
+                FROM purchase_receipt_items i
+                JOIN purchase_receipts r ON r.id=i.receipt_id
+            ) WHERE rn=1
+        )
+        SELECT p.id AS product_id, p.name AS product, p.min_stock_level,
+               MAX(0, COALESCE(sold.quantity,0)-COALESCE(returned.quantity,0)) AS units_sold,
+               COALESCE(stock.quantity,0) AS usable_stock,
+               COALESCE(outstanding.quantity,0) AS outstanding_order,
+               sup.id AS preferred_supplier_id,
+               sup.name AS supplier, COALESCE(sup.lead_time_days,7) AS lead_time_days,
+               CASE WHEN ? IS NOT NULL
+                    THEN COALESCE(supplier_costs.unit_cost,p.selling_price)
+                    ELSE COALESCE(supplier_costs.unit_cost,costs.purchase_unit_cost,p.selling_price)
+               END AS unit_cost
+        FROM products p
+        LEFT JOIN sold ON sold.product_id=p.id
+        LEFT JOIN returned ON returned.product_id=p.id
+        LEFT JOIN stock ON stock.product_id=p.id
+        LEFT JOIN outstanding ON outstanding.product_id=p.id
+        LEFT JOIN preferred ON preferred.product_id=p.id
+        LEFT JOIN suppliers sup ON sup.id=COALESCE(?, preferred.preferred_supplier_id)
+        LEFT JOIN supplier_costs
+               ON supplier_costs.product_id=p.id AND supplier_costs.supplier_id=sup.id
+        LEFT JOIN costs ON costs.product_id=p.id
+        ORDER BY LOWER(p.name)
+    """, parameters).fetchall()
+    conn.close()
+    suggestions = []
+    for row in rows:
+        sold = int(row["units_sold"] or 0)
+        daily = sold / period_days
+        lead = int(row["lead_time_days"] or 7)
+        reorder_point = max(int(row["min_stock_level"] or 0),
+                            int((Decimal(str(daily * (lead + safety_days)))).to_integral_value(rounding="ROUND_CEILING")))
+        target = max(reorder_point, int((Decimal(str(daily * (lead + safety_days + period_days)))).to_integral_value(rounding="ROUND_CEILING")))
+        available = int(row["usable_stock"] or 0)
+        outstanding = int(row["outstanding_order"] or 0)
+        suggested = max(0, target - available - outstanding)
+        if sold == 0:
+            movement = "No sales history"
+        elif daily >= 1:
+            movement = "Fast-moving"
+        else:
+            movement = "Slow-moving"
+        suggestions.append({
+            **dict(row), "period_days": period_days, "safety_days": safety_days,
+            "average_daily_sales": round(daily, 2), "reorder_point": reorder_point,
+            "target_stock": target, "suggested_quantity": suggested,
+            "movement": movement,
+            "explanation": (
+                f"{sold} sold / {period_days} days; target {target}; "
+                f"usable {available}; outstanding {outstanding}."
+            ),
+        })
+    return suggestions
+
+
+def create_order_from_recommendations(supplier_id, recommendations, order_date,
+                                      expected_date, acting_username=None,
+                                      acting_role=None):
+    _require_purchase_admin(acting_role)
+    items = []
+    for recommendation in recommendations:
+        quantity = int(recommendation.get("quantity") or 0)
+        if quantity > 0:
+            items.append({
+                "product_id": recommendation.get("product_id"),
+                "quantity": quantity,
+                "unit_cost": recommendation.get("unit_cost"),
+            })
+    if not items:
+        raise ValueError("Select at least one recommendation with a positive quantity.")
+    return save_purchase_order(
+        supplier_id, order_date, expected_date, items,
+        notes="Created from replenishment recommendations", status="draft",
+        acting_username=acting_username, acting_role=acting_role,
+    )
 
 
 def update_batch_record(batch_id, quantity, expiry_date, price, min_stock_level,
@@ -2133,7 +2638,8 @@ def create_sale(
     acting_username=None,
     acting_role=None,
     customer_ssn=None,
-    customer_name=None
+    customer_name=None,
+    performance_callback=None,
 ):
     conn = get_connection("POS checkout")
 
@@ -2150,6 +2656,7 @@ def create_sale(
             acting_role,
             customer_ssn,
             customer_name,
+            performance_callback,
         )
 
         conn.commit()
@@ -2169,7 +2676,8 @@ def _create_sale_locked(
     acting_username=None,
     acting_role=None,
     customer_ssn=None,
-    customer_name=None
+    customer_name=None,
+    performance_callback=None,
     ):
     plan, total_amount = preview_sale_allocations(cart_items, conn=conn)
 
@@ -2189,6 +2697,7 @@ def _create_sale_locked(
     normalized_ssn = normalize_customer_ssn(customer_ssn)
     normalized_name = (customer_name or "").strip()
 
+    inventory_deduction_ms = 0.0
     for item in plan:
         cursor.execute("""
             SELECT prescription_required
@@ -2245,6 +2754,7 @@ def _create_sale_locked(
                 cursor=cursor
             )
 
+        inventory_started = time.perf_counter()
         for allocation in item["allocations"]:
             cursor.execute("""
                 UPDATE batches
@@ -2277,9 +2787,10 @@ def _create_sale_locked(
                 allocation["quantity"],
                 allocation["expiry_date"]
             ))
+        inventory_deduction_ms += (time.perf_counter() - inventory_started) * 1000
 
-
-
+    if performance_callback is not None:
+        performance_callback("inventory_deduction", inventory_deduction_ms)
     return plan, total_amount
 
 

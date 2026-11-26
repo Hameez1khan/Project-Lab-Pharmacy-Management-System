@@ -15,19 +15,30 @@ from database.inventory_audit import bind, operator
 LEGACY_TABLES = ("inventory_events", "users", "products", "batches", "sales",
                  "sale_items", "sale_batch_allocations", "returns", "return_items",
                  "return_batch_allocations", "prescriptions", "audit_logs")
-TABLES = ("inventory_events", "users", "suppliers", "products", "batches",
+V3_TABLES = ("inventory_events", "users", "suppliers", "products", "batches",
           "purchase_receipts", "purchase_receipt_items", "sales", "sale_items",
           "sale_batch_allocations", "returns", "return_items",
           "return_batch_allocations", "prescriptions", "audit_logs")
+TABLES = ("inventory_events", "users", "suppliers", "products", "batches",
+          "purchase_orders", "purchase_order_items", "purchase_receipts",
+          "purchase_receipt_items", "sales", "sale_items", "sale_batch_allocations",
+          "returns", "return_items", "return_batch_allocations", "prescriptions",
+          "audit_logs")
 KEYS = {"audit_logs": "transfer_key"}
 UNIQUE = {"users": ("username",), "suppliers": ("name",),
           "products": ("name", "barcode"), "batches": ("batch_number",),
+          "purchase_orders": ("order_number",),
           "purchase_receipts": ("reference_number",)}
 LINKS = {
     "batches": {"product_id": "products"},
-    "purchase_receipts": {"supplier_id": "suppliers"},
+    "purchase_orders": {"supplier_id": "suppliers"},
+    "purchase_order_items": {"purchase_order_id": "purchase_orders",
+        "product_id": "products"},
+    "purchase_receipts": {"supplier_id": "suppliers",
+        "purchase_order_id": "purchase_orders"},
     "purchase_receipt_items": {"receipt_id": "purchase_receipts",
-        "product_id": "products", "batch_id": "batches"},
+        "product_id": "products", "batch_id": "batches",
+        "purchase_order_item_id": "purchase_order_items"},
     "sales": {"cashier_id": "users"},
     "sale_items": {"sale_id": "sales", "product_id": "products"},
     "sale_batch_allocations": {"sale_item_id": "sale_items", "batch_id": "batches"},
@@ -41,6 +52,7 @@ LINKS = {
 VERSION_V1 = "Pharmacy workbook v1"
 VERSION_V2 = "Pharmacy workbook v2"
 VERSION_V3 = "Pharmacy workbook v3"
+VERSION_V4 = "Pharmacy workbook v4"
 TECH_PREFIX = "_data_"
 HEADER_FILL = PatternFill("solid", fgColor="2563EB")
 HEADER_FONT = Font(color="FFFFFF", bold=True)
@@ -71,6 +83,11 @@ def put(ws, values):
     for cell in ws[ws.max_row]:
         if isinstance(cell.value, str):
             cell.data_type = "s"
+
+
+def encode(value):
+    """Preserve text exactly through Excel, including empty strings."""
+    return "''" + value if isinstance(value, str) else value
 
 
 def _display_datetime(value):
@@ -124,7 +141,8 @@ def _add_visible_sheets(book, c):
     for cell in overview[4]:
         cell.fill, cell.font = HEADER_FILL, HEADER_FONT
     for label, table in (("Products", "products"), ("Batches", "batches"),
-                         ("Suppliers", "suppliers"), ("Purchases", "purchase_receipts"),
+                         ("Suppliers", "suppliers"), ("Purchase orders", "purchase_orders"),
+                         ("Purchases", "purchase_receipts"),
                          ("Sales", "sales"), ("Returns", "returns"),
                          ("Prescriptions", "prescriptions")):
         overview.append([label, c.execute(f"SELECT count(*) FROM {table}").fetchone()[0]])
@@ -154,12 +172,35 @@ def _add_visible_sheets(book, c):
         "Unit cost", "Stock cost", "Discount %", "Status"), inventory_rows,
         currency_columns=("F", "G"), date_columns=("D",))
 
-    suppliers = c.execute("""SELECT name,contact_person,phone,email,address,created_at
+    suppliers = c.execute("""SELECT name,contact_person,phone,email,address,lead_time_days,created_at
         FROM suppliers ORDER BY lower(name)""")
     _business_sheet(book, "Suppliers", ("No.", "Supplier", "Contact", "Phone", "Email",
-        "Address", "Created"),
-        ((n, r[0], r[1], r[2], r[3], r[4], _display_datetime(r[5]))
-         for n, r in enumerate(suppliers, 1)), date_columns=("G",))
+        "Address", "Lead time (days)", "Created"),
+        ((n, r[0], r[1], r[2], r[3], r[4], r[5], _display_datetime(r[6]))
+         for n, r in enumerate(suppliers, 1)), date_columns=("H",))
+
+    orders = c.execute("""SELECT o.id,o.order_number,s.name,o.order_date,o.expected_date,
+        o.status,sum(i.ordered_quantity),sum(i.received_quantity),
+        sum(i.ordered_quantity*i.unit_cost),o.created_by,o.notes
+        FROM purchase_orders o JOIN suppliers s ON s.id=o.supplier_id
+        JOIN purchase_order_items i ON i.purchase_order_id=o.id
+        GROUP BY o.id ORDER BY o.order_date,o.id""")
+    _business_sheet(book, "Purchase Orders", ("No.", "Order", "Supplier", "Order date",
+        "Expected", "Status", "Ordered units", "Received units", "Total cost",
+        "Created by", "Notes"),
+        ((n, r[1], r[2], _display_datetime(r[3]), _display_datetime(r[4]), r[5],
+          r[6], r[7], r[8], r[9], r[10]) for n, r in enumerate(orders, 1)),
+        currency_columns=("I",), date_columns=("D", "E"))
+
+    order_items = c.execute("""SELECT o.order_number,p.name,i.ordered_quantity,
+        i.received_quantity,i.ordered_quantity-i.received_quantity,i.unit_cost,
+        i.ordered_quantity*i.unit_cost
+        FROM purchase_order_items i JOIN purchase_orders o ON o.id=i.purchase_order_id
+        JOIN products p ON p.id=i.product_id ORDER BY o.id,i.id""")
+    _business_sheet(book, "Order Items", ("No.", "Order", "Product", "Ordered",
+        "Received", "Outstanding", "Unit cost", "Line total"),
+        ((n, *r) for n, r in enumerate(order_items, 1)),
+        currency_columns=("G", "H"))
 
     purchases = c.execute("""SELECT r.id,r.reference_number,r.received_date,s.name,
         count(i.id),coalesce(sum(i.quantity),0),coalesce(sum(i.total_cost),0),
@@ -246,14 +287,14 @@ def export_book(path):
         token = c.execute("SELECT token FROM transfer_origin WHERE id=1").fetchone()[0]
         _add_visible_sheets(book, c)
         meta = book.create_sheet("Manifest")
-        put(meta, (VERSION_V3, token))
+        put(meta, (VERSION_V4, token))
         for table in TABLES:
             cols = columns(c, table)
             ws = book.create_sheet(TECH_PREFIX + table)
             put(ws, cols)
             ws.freeze_panes = "A2"
             for row in c.execute(f"SELECT {','.join(cols)} FROM {table}"):
-                put(ws, row)
+                put(ws, (encode(value) for value in row))
             seq = c.execute("SELECT seq FROM sqlite_sequence WHERE name=?", (table,)).fetchone()
             put(meta, (table, ws.max_row - 1, int(seq[0]) if seq else 0))
             ws.sheet_state = "hidden"
@@ -285,10 +326,15 @@ def read_rows(c, book):
     if "Manifest" not in book.sheetnames:
         raise ValueError("Missing workbook manifest.")
     meta = list(book["Manifest"].values)
-    if not meta or meta[0][0] not in (VERSION_V1, VERSION_V2, VERSION_V3) or not meta[0][1]:
+    if not meta or meta[0][0] not in (VERSION_V1, VERSION_V2, VERSION_V3, VERSION_V4) or not meta[0][1]:
         raise ValueError("Not a pharmacy data workbook.")
     version = meta[0][0]
-    workbook_tables = TABLES if version == VERSION_V3 else LEGACY_TABLES
+    if version == VERSION_V4:
+        workbook_tables = TABLES
+    elif version == VERSION_V3:
+        workbook_tables = V3_TABLES
+    else:
+        workbook_tables = LEGACY_TABLES
     prefix = "" if version == VERSION_V1 else TECH_PREFIX
     required = {prefix + table for table in workbook_tables}
     if not required.issubset(book.sheetnames):
@@ -300,11 +346,14 @@ def read_rows(c, book):
         raise ValueError("Invalid manifest.")
     data = {}
     for table in workbook_tables:
-        kinds = columns(c, table)
+        available_kinds = columns(c, table)
         rows = iter(book[prefix + table].rows)
         header = [cell.value for cell in next(rows, ())]
-        if len(header) != len(kinds) or set(header) != set(kinds):
+        if (not header or len(header) != len(set(header))
+                or not set(header).issubset(available_kinds)
+                or version == VERSION_V4 and set(header) != set(available_kinds)):
             raise ValueError(f"{table}: unexpected columns.")
+        kinds = {name: available_kinds[name] for name in header}
         key = KEYS.get(table, "id")
         data[table] = {}
         for number, row in enumerate(rows, 2):
@@ -354,6 +403,8 @@ def import_book(path):
                 key = KEYS.get(table, "id")
                 for identifier, values in data[table].items():
                     for field, parent in LINKS.get(table, {}).items():
+                        if field not in values:
+                            continue
                         reference = values[field]
                         if reference is None or reference in data[parent]:
                             continue

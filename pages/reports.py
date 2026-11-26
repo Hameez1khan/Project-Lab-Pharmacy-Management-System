@@ -198,7 +198,7 @@ class ReportsPage(QWidget):
         try:
             message = action(path)
         except Exception as e:
-            QMessageBox.warning(self, T(title), str(e))
+            QMessageBox.warning(self, T(title), T(str(e)))
             return
         QMessageBox.information(self, T(title), T(message or "Export complete."))
 
