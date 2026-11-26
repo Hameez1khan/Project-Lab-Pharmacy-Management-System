@@ -11,6 +11,64 @@ _language = "en"
 _catalog = r"""
 Dashboard|Áttekintés|لوحة المعلومات
 Batch Management|Készletek tételenként|إدارة دفعات المخزون
+Purchasing|Beszerzés|المشتريات
+Receive supplier deliveries and keep their complete history|Szállítói áruátvétel és teljes beszerzési előzmény|استلام توريدات الموردين والاحتفاظ بسجلها الكامل
+Receive Stock|Áruátvétel|استلام المخزون
+Purchase History|Beszerzési előzmények|سجل المشتريات
+Suppliers|Beszállítók|الموردون
+Add Supplier|Beszállító hozzáadása|إضافة مورد
+Edit Supplier|Beszállító szerkesztése|تعديل المورد
++ Add Supplier|+ Új beszállító|+ إضافة مورد
+Supplier|Beszállító|المورد
+Supplier name|Beszállító neve|اسم المورد
+Contact person|Kapcsolattartó|جهة الاتصال
+Phone|Telefon|الهاتف
+Email|E-mail|البريد الإلكتروني
+Address|Cím|العنوان
+Reference number|Hivatkozási szám|رقم المرجع
+Supplier invoice or delivery note|Szállítói számla vagy szállítólevél|فاتورة المورد أو إشعار التسليم
+Received date|Átvétel dátuma|تاريخ الاستلام
+Received items|Átvett tételek|العناصر المستلمة
++ Add item|+ Tétel hozzáadása|+ إضافة عنصر
+Unit cost (Ft)|Egységköltség (Ft)|تكلفة الوحدة (Ft)
+Line total|Sorösszeg|إجمالي السطر
+Notes|Megjegyzések|ملاحظات
+Optional delivery notes|Opcionális szállítási megjegyzések|ملاحظات تسليم اختيارية
+Receive delivery|Szállítmány átvétele|استلام التوريد
+Search by supplier or reference...|Keresés beszállító vagy hivatkozás alapján...|البحث بالمورد أو الرقم المرجعي...
+Search suppliers...|Beszállítók keresése...|البحث عن الموردين...
+Received by|Átvevő|المستلم بواسطة
+Select supplier|Válasszon beszállítót|اختر المورد
+Select product|Válasszon terméket|اختر المنتج
+Batch number|Tételszám|رقم الدفعة
+Remove|Eltávolítás|إزالة
+View|Megtekintés|عرض
+Purchase details|Beszerzés részletei|تفاصيل الشراء
+No received items found.|Nincsenek átvett tételek.|لم يتم العثور على عناصر مستلمة.
+Purchase receipt P-{receipt:05d} was saved and stock was updated.|A P-{receipt:05d} beszerzési bizonylat mentve, a készlet frissítve.|تم حفظ إيصال الشراء P-{receipt:05d} وتحديث المخزون.
+Delete Supplier|Beszállító törlése|حذف المورد
+Delete supplier {name}?|Törli a(z) {name} beszállítót?|هل تريد حذف المورد {name}؟
+Supplier name is required.|A beszállító neve kötelező.|اسم المورد مطلوب.
+Supplier details are too long.|A beszállító adatai túl hosszúak.|بيانات المورد طويلة جدًا.
+Enter a valid email address.|Adjon meg érvényes e-mail-címet.|أدخل عنوان بريد إلكتروني صالحًا.
+Supplier was not found.|A beszállító nem található.|لم يتم العثور على المورد.
+A supplier with this name already exists.|Már létezik ilyen nevű beszállító.|يوجد مورد بهذا الاسم بالفعل.
+Supplier saved successfully.|A beszállító mentése sikeres.|تم حفظ المورد بنجاح.
+Suppliers with purchase history cannot be deleted.|Beszerzési előzménnyel rendelkező beszállító nem törölhető.|لا يمكن حذف مورد لديه سجل مشتريات.
+Supplier deleted successfully.|A beszállító törlése sikeres.|تم حذف المورد بنجاح.
+Enter a purchase reference number.|Adjon meg beszerzési hivatkozási számot.|أدخل رقم مرجع الشراء.
+Enter a valid received date.|Adjon meg érvényes átvételi dátumot.|أدخل تاريخ استلام صالحًا.
+The received date cannot be in the future.|Az átvétel dátuma nem lehet jövőbeli.|لا يمكن أن يكون تاريخ الاستلام في المستقبل.
+Add at least one received item.|Adjon hozzá legalább egy átvett tételt.|أضف عنصرًا مستلمًا واحدًا على الأقل.
+Check the product, quantity, cost, and expiry date on every line.|Ellenőrizze minden sorban a terméket, mennyiséget, költséget és lejáratot.|تحقق من المنتج والكمية والتكلفة وتاريخ الصلاحية في كل سطر.
+Every received item needs a batch number.|Minden átvett tételhez tételszám szükséges.|كل عنصر مستلم يحتاج إلى رقم دفعة.
+Received quantities must be positive whole numbers.|Az átvett mennyiségnek pozitív egész számnak kell lennie.|يجب أن تكون الكميات المستلمة أعدادًا صحيحة موجبة.
+Purchase costs must be positive with at most two decimal places.|A beszerzési költség legyen pozitív, legfeljebb két tizedesjeggyel.|يجب أن تكون تكلفة الشراء موجبة وبحد أقصى منزلتين عشريتين.
+Batch expiry must be after the received date.|A tétel lejáratának az átvétel után kell lennie.|يجب أن يكون انتهاء صلاحية الدفعة بعد تاريخ الاستلام.
+Choose a valid supplier.|Válasszon érvényes beszállítót.|اختر موردًا صالحًا.
+This purchase reference already exists.|Ez a beszerzési hivatkozás már létezik.|مرجع الشراء هذا موجود بالفعل.
+A selected product no longer exists.|A kiválasztott termék már nem létezik.|المنتج المحدد لم يعد موجودًا.
+Batch number conflicts with existing product or expiry details.|A tételszám ütközik egy meglévő termék vagy lejárat adataival.|رقم الدفعة يتعارض مع بيانات منتج أو صلاحية موجودة.
 Batch-based Inventory Management|Tételes készletkezelés|إدارة المخزون حسب الدفعة
 Product Batch Manager|Készlettételek kezelése|إدارة دفعات المنتجات
 Point of Sale|Pénztár|نقطة البيع

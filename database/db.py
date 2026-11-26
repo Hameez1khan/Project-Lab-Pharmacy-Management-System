@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import sqlite3
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -389,6 +390,48 @@ def initialize_database():
     """)
 
     cursor.execute("""
+    CREATE TABLE IF NOT EXISTS suppliers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        contact_person TEXT,
+        phone TEXT,
+        email TEXT,
+        address TEXT,
+        created_at TEXT NOT NULL
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS purchase_receipts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier_id INTEGER NOT NULL,
+        reference_number TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        received_date TEXT NOT NULL,
+        notes TEXT,
+        received_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE RESTRICT
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS purchase_receipt_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        receipt_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        batch_id INTEGER NOT NULL,
+        batch_number TEXT NOT NULL,
+        expiry_date TEXT NOT NULL,
+        quantity INTEGER NOT NULL CHECK(quantity > 0),
+        unit_cost REAL NOT NULL CHECK(unit_cost > 0),
+        total_cost REAL NOT NULL CHECK(total_cost > 0),
+        FOREIGN KEY (receipt_id) REFERENCES purchase_receipts(id) ON DELETE CASCADE,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
+        FOREIGN KEY (batch_id) REFERENCES batches(id) ON DELETE RESTRICT
+    )
+    """)
+
+    cursor.execute("""
         INSERT OR IGNORE INTO users (username, password, role)
         VALUES ('admin', ?, 'admin')
     """, (hash_password("1234"),))
@@ -742,6 +785,258 @@ def add_batch_record(product_name, batch_number, quantity, expiry_date, purchase
     conn.commit()
     conn.close()
     return True, "Batch added successfully."
+
+
+def get_purchase_products():
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT id, name FROM products ORDER BY LOWER(name)"
+    ).fetchall()
+    conn.close()
+    return [{"id": row["id"], "name": row["name"]} for row in rows]
+
+
+def get_suppliers(search_text=""):
+    conn = get_connection()
+    pattern = f"%{search_text.strip().lower()}%"
+    rows = conn.execute("""
+        SELECT id, name, contact_person, phone, email, address, created_at
+        FROM suppliers
+        WHERE LOWER(name) LIKE ?
+           OR LOWER(COALESCE(contact_person, '')) LIKE ?
+           OR LOWER(COALESCE(phone, '')) LIKE ?
+           OR LOWER(COALESCE(email, '')) LIKE ?
+        ORDER BY LOWER(name)
+    """, (pattern, pattern, pattern, pattern)).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def save_supplier(name, contact_person="", phone="", email="", address="",
+                  supplier_id=None, acting_username=None, acting_role=None):
+    name = str(name or "").strip()
+    contact_person = str(contact_person or "").strip()
+    phone = str(phone or "").strip()
+    email = str(email or "").strip()
+    address = str(address or "").strip()
+    if not name:
+        return False, "Supplier name is required."
+    if len(name) > 120 or any(len(value) > 250 for value in (contact_person, phone, email, address)):
+        return False, "Supplier details are too long."
+    if email and ("@" not in email or email.startswith("@") or email.endswith("@")):
+        return False, "Enter a valid email address."
+
+    conn = get_connection("Supplier record updated")
+    cursor = conn.cursor()
+    try:
+        if supplier_id is None:
+            cursor.execute("""
+                INSERT INTO suppliers(name, contact_person, phone, email, address, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (name, contact_person, phone, email, address,
+                  datetime.now().strftime("%Y-%m-%d %H:%M")))
+            description = f"Added supplier {name}"
+        else:
+            if not cursor.execute("SELECT 1 FROM suppliers WHERE id=?", (supplier_id,)).fetchone():
+                return False, "Supplier was not found."
+            cursor.execute("""
+                UPDATE suppliers
+                SET name=?, contact_person=?, phone=?, email=?, address=?
+                WHERE id=?
+            """, (name, contact_person, phone, email, address, int(supplier_id)))
+            description = f"Updated supplier {name}"
+        add_audit_log(acting_username or "System", description, acting_role,
+                      conn=conn, cursor=cursor)
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return False, "A supplier with this name already exists."
+    finally:
+        conn.close()
+    return True, "Supplier saved successfully."
+
+
+def delete_supplier(supplier_id, acting_username=None, acting_role=None):
+    conn = get_connection("Supplier removed")
+    cursor = conn.cursor()
+    supplier = cursor.execute(
+        "SELECT name FROM suppliers WHERE id=?", (int(supplier_id),)
+    ).fetchone()
+    if not supplier:
+        conn.close()
+        return False, "Supplier was not found."
+    if cursor.execute(
+        "SELECT 1 FROM purchase_receipts WHERE supplier_id=? LIMIT 1", (int(supplier_id),)
+    ).fetchone():
+        conn.close()
+        return False, "Suppliers with purchase history cannot be deleted."
+    cursor.execute("DELETE FROM suppliers WHERE id=?", (int(supplier_id),))
+    add_audit_log(acting_username or "System", f"Deleted supplier {supplier['name']}",
+                  acting_role, conn=conn, cursor=cursor)
+    conn.commit()
+    conn.close()
+    return True, "Supplier deleted successfully."
+
+
+def receive_purchase(supplier_id, reference_number, received_date, items, notes="",
+                     acting_username=None, acting_role=None):
+    reference_number = str(reference_number or "").strip()
+    received_date = str(received_date or "").strip()
+    notes = str(notes or "").strip()
+    if not reference_number or len(reference_number) > 80:
+        raise ValueError("Enter a purchase reference number.")
+    try:
+        received_day = datetime.strptime(received_date, "%Y-%m-%d").date()
+    except ValueError as error:
+        raise ValueError("Enter a valid received date.") from error
+    if received_day > datetime.now().date():
+        raise ValueError("The received date cannot be in the future.")
+    if not items:
+        raise ValueError("Add at least one received item.")
+    try:
+        supplier_id = int(supplier_id)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Choose a valid supplier.") from error
+
+    normalized = []
+    for item in items:
+        try:
+            product_id = int(item.get("product_id"))
+            quantity = int(item.get("quantity"))
+            unit_cost = Decimal(str(item.get("unit_cost")))
+            expiry = datetime.strptime(str(item.get("expiry_date", "")).strip(), "%Y-%m-%d").date()
+        except (TypeError, ValueError, InvalidOperation) as error:
+            raise ValueError("Check the product, quantity, cost, and expiry date on every line.") from error
+        batch_number = str(item.get("batch_number") or "").strip()
+        if not batch_number or len(batch_number) > 80:
+            raise ValueError("Every received item needs a batch number.")
+        if quantity <= 0 or quantity > 1_000_000:
+            raise ValueError("Received quantities must be positive whole numbers.")
+        if (not unit_cost.is_finite() or unit_cost <= 0 or unit_cost > Decimal("999999999")
+                or unit_cost != unit_cost.quantize(Decimal("0.01"))):
+            raise ValueError("Purchase costs must be positive with at most two decimal places.")
+        if expiry <= received_day:
+            raise ValueError("Batch expiry must be after the received date.")
+        normalized.append({
+            "product_id": product_id,
+            "batch_number": batch_number,
+            "expiry_date": expiry.isoformat(),
+            "quantity": quantity,
+            "unit_cost": float(unit_cost),
+        })
+
+    conn = get_connection(f"Purchase receipt {reference_number}")
+    cursor = conn.cursor()
+    try:
+        cursor.execute("BEGIN IMMEDIATE")
+        supplier = cursor.execute(
+            "SELECT name FROM suppliers WHERE id=?", (supplier_id,)
+        ).fetchone()
+        if not supplier:
+            raise ValueError("Choose a valid supplier.")
+        if cursor.execute(
+            "SELECT 1 FROM purchase_receipts WHERE reference_number=? COLLATE NOCASE",
+            (reference_number,),
+        ).fetchone():
+            raise ValueError("This purchase reference already exists.")
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        cursor.execute("""
+            INSERT INTO purchase_receipts
+                (supplier_id, reference_number, received_date, notes, received_by, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (supplier_id, reference_number, received_date, notes,
+              (acting_username or "System").strip(), now))
+        receipt_id = cursor.lastrowid
+
+        for item in normalized:
+            product = cursor.execute(
+                "SELECT name FROM products WHERE id=?", (item["product_id"],)
+            ).fetchone()
+            if not product:
+                raise ValueError("A selected product no longer exists.")
+            existing = cursor.execute("""
+                SELECT id, product_id, expiry_date, quantity, purchase_unit_cost
+                FROM batches WHERE batch_number=? COLLATE NOCASE
+            """, (item["batch_number"],)).fetchone()
+            line_total = round(item["unit_cost"] * item["quantity"], 2)
+            if existing:
+                if (existing["product_id"] != item["product_id"]
+                        or existing["expiry_date"] != item["expiry_date"]):
+                    raise ValueError(
+                        "Batch number conflicts with existing product or expiry details."
+                    )
+                new_quantity = existing["quantity"] + item["quantity"]
+                stock_cost = existing["quantity"] * existing["purchase_unit_cost"] + line_total
+                weighted_cost = round(stock_cost / new_quantity, 2)
+                cursor.execute("""
+                    UPDATE batches
+                    SET quantity=?, purchase_unit_cost=?, total_purchase_cost=?
+                    WHERE id=?
+                """, (new_quantity, weighted_cost, round(stock_cost, 2), existing["id"]))
+                batch_id = existing["id"]
+            else:
+                cursor.execute("""
+                    INSERT INTO batches
+                        (product_id, batch_number, expiry_date, quantity,
+                         purchase_unit_cost, total_purchase_cost)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (item["product_id"], item["batch_number"], item["expiry_date"],
+                      item["quantity"], item["unit_cost"], line_total))
+                batch_id = cursor.lastrowid
+
+            cursor.execute("""
+                INSERT INTO purchase_receipt_items
+                    (receipt_id, product_id, batch_id, batch_number, expiry_date,
+                     quantity, unit_cost, total_cost)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (receipt_id, item["product_id"], batch_id, item["batch_number"],
+                  item["expiry_date"], item["quantity"], item["unit_cost"], line_total))
+
+        total_quantity = sum(item["quantity"] for item in normalized)
+        add_audit_log(
+            acting_username or "System",
+            f"Received purchase {reference_number} from {supplier['name']} ({total_quantity} units)",
+            acting_role, conn=conn, cursor=cursor,
+        )
+        conn.commit()
+        return receipt_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def get_purchase_history(search_text=""):
+    conn = get_connection()
+    pattern = f"%{search_text.strip().lower()}%"
+    rows = conn.execute("""
+        SELECT r.id, r.reference_number, r.received_date, s.name AS supplier,
+               COUNT(i.id) AS line_count, COALESCE(SUM(i.quantity), 0) AS quantity,
+               COALESCE(SUM(i.total_cost), 0) AS total_cost, r.received_by, r.notes
+        FROM purchase_receipts r
+        JOIN suppliers s ON s.id=r.supplier_id
+        LEFT JOIN purchase_receipt_items i ON i.receipt_id=r.id
+        WHERE LOWER(r.reference_number) LIKE ? OR LOWER(s.name) LIKE ?
+        GROUP BY r.id
+        ORDER BY r.received_date DESC, r.id DESC
+    """, (pattern, pattern)).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_purchase_receipt_items(receipt_id):
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT p.name AS product, i.batch_number, i.expiry_date, i.quantity,
+               i.unit_cost, i.total_cost
+        FROM purchase_receipt_items i
+        JOIN products p ON p.id=i.product_id
+        WHERE i.receipt_id=? ORDER BY i.id
+    """, (int(receipt_id),)).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
 
 
 def update_batch_record(batch_id, quantity, expiry_date, price, min_stock_level,

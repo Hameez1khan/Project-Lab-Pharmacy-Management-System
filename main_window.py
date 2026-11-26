@@ -23,6 +23,7 @@ from pages.product import ProductPage
 from pages.prescriptions import PrescriptionsPage
 from pages.audit_logs import AuditLogsPage
 from pages.reports import ReportsPage
+from pages.purchasing import PurchasingPage
 from i18n import T, format_current_date, is_rtl
 from ui_theme import (
     BORDER,
@@ -82,6 +83,10 @@ class MainWindow(QWidget):
         self.stack = QStackedWidget()
         self.dashboard_page = DashboardPage()
         self.batch_management_page = BatchManagementPage(current_user=self.current_user)
+        self.purchasing_page = (
+            PurchasingPage(current_user=self.current_user)
+            if self.current_role == "admin" else None
+        )
         self.pos_page = POSPage(current_user=self.current_user)
         self.product_page = ProductPage(role=self.current_role, current_user=self.current_user)
 
@@ -94,6 +99,8 @@ class MainWindow(QWidget):
 
         self.stack.addWidget(self.dashboard_page)
         self.stack.addWidget(self.batch_management_page)
+        if self.purchasing_page is not None:
+            self.stack.addWidget(self.purchasing_page)
         self.stack.addWidget(self.pos_page)
         self.stack.addWidget(self.product_page)
         self.stack.addWidget(self.prescriptions_page)
@@ -200,6 +207,7 @@ class MainWindow(QWidget):
 
 
         if self.current_role == "admin":
+            menu_items.insert(2, ("Purchasing", "", self.show_purchasing, True))
             menu_items.append(("Settings", "", self.show_settings, True))
 
         for text, icon, handler, enabled in menu_items:
@@ -386,6 +394,13 @@ class MainWindow(QWidget):
         self.batch_management_page.reload_filters()
         self.batch_management_page.refresh_table()
         self.stack.setCurrentWidget(self.batch_management_page)
+
+    def show_purchasing(self):
+        if self.purchasing_page is None:
+            return
+        self.set_active_button("Purchasing")
+        self.purchasing_page.refresh()
+        self.stack.setCurrentWidget(self.purchasing_page)
 
     def show_pos(self):
         self.set_active_button("Point of Sale")

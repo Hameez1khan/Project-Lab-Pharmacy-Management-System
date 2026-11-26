@@ -21,6 +21,7 @@ The application includes:
 - separate login access for **Admin** and **Pharmacist**
 - product management with barcode, category, price, and dosage form
 - batch-based stock tracking
+- supplier management and purchase receiving
 - expiry monitoring
 - checkout and cart handling
 - prescription tracking for medicines that require it
@@ -135,6 +136,9 @@ Shows medicine count, sales, returned items, low stock, expiry alerts, and the l
 ### Batch Management
 Used for managing medicine batches, stock quantity, and expiry dates.
 
+### Purchasing
+Used by administrators to manage suppliers, receive multi-item deliveries, update batch stock, and review purchase history. Existing batches are increased only when their product and expiry details match.
+
 ### Point of Sale
 Used for searching products, adding them to the cart, and completing sales.
 
@@ -164,7 +168,7 @@ Used for password, account, and language settings.
 The **Reports** page provides two different options:
 
 - **Backup database** creates an exact copy of the pharmacy database. Use this for full recovery.
-- **Export data** creates a readable Excel workbook. Use **Merge data** to add records from such a workbook while skipping records already present.
+- **Export data** creates a readable Excel workbook, including suppliers and purchases. Use **Merge data** to add records from such a workbook while skipping records already present.
 
 Restoring a database replaces the current data. The application creates a safety backup first and then closes so the restored database can be loaded on the next start.
 

@@ -12,14 +12,23 @@ from openpyxl.utils import get_column_letter
 from database.db import get_connection
 from database.inventory_audit import bind, operator
 
-TABLES = ("inventory_events", "users", "products", "batches", "sales", "sale_items",
+LEGACY_TABLES = ("inventory_events", "users", "products", "batches", "sales",
+                 "sale_items", "sale_batch_allocations", "returns", "return_items",
+                 "return_batch_allocations", "prescriptions", "audit_logs")
+TABLES = ("inventory_events", "users", "suppliers", "products", "batches",
+          "purchase_receipts", "purchase_receipt_items", "sales", "sale_items",
           "sale_batch_allocations", "returns", "return_items",
           "return_batch_allocations", "prescriptions", "audit_logs")
 KEYS = {"audit_logs": "transfer_key"}
-UNIQUE = {"users": ("username",), "products": ("name", "barcode"),
-          "batches": ("batch_number",)}
+UNIQUE = {"users": ("username",), "suppliers": ("name",),
+          "products": ("name", "barcode"), "batches": ("batch_number",),
+          "purchase_receipts": ("reference_number",)}
 LINKS = {
-    "batches": {"product_id": "products"}, "sales": {"cashier_id": "users"},
+    "batches": {"product_id": "products"},
+    "purchase_receipts": {"supplier_id": "suppliers"},
+    "purchase_receipt_items": {"receipt_id": "purchase_receipts",
+        "product_id": "products", "batch_id": "batches"},
+    "sales": {"cashier_id": "users"},
     "sale_items": {"sale_id": "sales", "product_id": "products"},
     "sale_batch_allocations": {"sale_item_id": "sale_items", "batch_id": "batches"},
     "returns": {"sale_id": "sales"},
@@ -31,6 +40,7 @@ LINKS = {
 }
 VERSION_V1 = "Pharmacy workbook v1"
 VERSION_V2 = "Pharmacy workbook v2"
+VERSION_V3 = "Pharmacy workbook v3"
 TECH_PREFIX = "_data_"
 HEADER_FILL = PatternFill("solid", fgColor="2563EB")
 HEADER_FONT = Font(color="FFFFFF", bold=True)
@@ -114,6 +124,7 @@ def _add_visible_sheets(book, c):
     for cell in overview[4]:
         cell.fill, cell.font = HEADER_FILL, HEADER_FONT
     for label, table in (("Products", "products"), ("Batches", "batches"),
+                         ("Suppliers", "suppliers"), ("Purchases", "purchase_receipts"),
                          ("Sales", "sales"), ("Returns", "returns"),
                          ("Prescriptions", "prescriptions")):
         overview.append([label, c.execute(f"SELECT count(*) FROM {table}").fetchone()[0]])
@@ -142,6 +153,36 @@ def _add_visible_sheets(book, c):
     _business_sheet(book, "Inventory", ("No.", "Product", "Batch", "Expiry", "Quantity",
         "Unit cost", "Stock cost", "Discount %", "Status"), inventory_rows,
         currency_columns=("F", "G"), date_columns=("D",))
+
+    suppliers = c.execute("""SELECT name,contact_person,phone,email,address,created_at
+        FROM suppliers ORDER BY lower(name)""")
+    _business_sheet(book, "Suppliers", ("No.", "Supplier", "Contact", "Phone", "Email",
+        "Address", "Created"),
+        ((n, r[0], r[1], r[2], r[3], r[4], _display_datetime(r[5]))
+         for n, r in enumerate(suppliers, 1)), date_columns=("G",))
+
+    purchases = c.execute("""SELECT r.id,r.reference_number,r.received_date,s.name,
+        count(i.id),coalesce(sum(i.quantity),0),coalesce(sum(i.total_cost),0),
+        r.received_by,r.notes
+        FROM purchase_receipts r JOIN suppliers s ON s.id=r.supplier_id
+        LEFT JOIN purchase_receipt_items i ON i.receipt_id=r.id
+        GROUP BY r.id ORDER BY r.received_date,r.id""")
+    _business_sheet(book, "Purchases", ("No.", "Receipt", "Reference", "Received",
+        "Supplier", "Line items", "Units", "Total cost", "Received by", "Notes"),
+        ((n, f"P-{r[0]:05d}", r[1], _display_datetime(r[2]), r[3], r[4], r[5],
+          r[6], r[7], r[8]) for n, r in enumerate(purchases, 1)),
+        currency_columns=("H",), date_columns=("D",))
+
+    purchase_items = c.execute("""SELECT r.id,r.reference_number,p.name,i.batch_number,
+        i.expiry_date,i.quantity,i.unit_cost,i.total_cost
+        FROM purchase_receipt_items i
+        JOIN purchase_receipts r ON r.id=i.receipt_id
+        JOIN products p ON p.id=i.product_id ORDER BY r.id,i.id""")
+    _business_sheet(book, "Purchase Items", ("No.", "Receipt", "Reference", "Product",
+        "Batch", "Expiry", "Quantity", "Unit cost", "Total cost"),
+        ((n, f"P-{r[0]:05d}", r[1], r[2], r[3], _display_datetime(r[4]),
+          r[5], r[6], r[7]) for n, r in enumerate(purchase_items, 1)),
+        currency_columns=("H", "I"), date_columns=("F",))
 
     sales = c.execute("""SELECT s.id,s.sale_datetime,s.payment_method,count(i.id),s.total_amount
         FROM sales s LEFT JOIN sale_items i ON i.sale_id=s.id GROUP BY s.id ORDER BY s.id""")
@@ -205,7 +246,7 @@ def export_book(path):
         token = c.execute("SELECT token FROM transfer_origin WHERE id=1").fetchone()[0]
         _add_visible_sheets(book, c)
         meta = book.create_sheet("Manifest")
-        put(meta, (VERSION_V2, token))
+        put(meta, (VERSION_V3, token))
         for table in TABLES:
             cols = columns(c, table)
             ws = book.create_sheet(TECH_PREFIX + table)
@@ -244,19 +285,21 @@ def read_rows(c, book):
     if "Manifest" not in book.sheetnames:
         raise ValueError("Missing workbook manifest.")
     meta = list(book["Manifest"].values)
-    if not meta or meta[0][0] not in (VERSION_V1, VERSION_V2) or not meta[0][1]:
+    if not meta or meta[0][0] not in (VERSION_V1, VERSION_V2, VERSION_V3) or not meta[0][1]:
         raise ValueError("Not a pharmacy data workbook.")
-    prefix = "" if meta[0][0] == VERSION_V1 else TECH_PREFIX
-    required = {prefix + table for table in TABLES}
+    version = meta[0][0]
+    workbook_tables = TABLES if version == VERSION_V3 else LEGACY_TABLES
+    prefix = "" if version == VERSION_V1 else TECH_PREFIX
+    required = {prefix + table for table in workbook_tables}
     if not required.issubset(book.sheetnames):
         raise ValueError("The workbook is missing required data worksheets.")
-    if meta[0][0] == VERSION_V1 and set(book.sheetnames) != {"Manifest", *TABLES}:
+    if version == VERSION_V1 and set(book.sheetnames) != {"Manifest", *workbook_tables}:
         raise ValueError("Missing or unexpected worksheet.")
     counts = {table: (int(count), int(seq)) for table, count, seq in meta[1:]}
-    if set(counts) != set(TABLES):
+    if set(counts) != set(workbook_tables):
         raise ValueError("Invalid manifest.")
     data = {}
-    for table in TABLES:
+    for table in workbook_tables:
         kinds = columns(c, table)
         rows = iter(book[prefix + table].rows)
         header = [cell.value for cell in next(rows, ())]
@@ -305,7 +348,7 @@ def import_book(path):
                            for table in ("products", "batches", "sales", "returns")):
                     c.execute("UPDATE transfer_origin SET token=? WHERE id=1", (origin,))
 
-            for table in TABLES:
+            for table in data:
                 if table == "inventory_events":
                     c.execute("DROP TRIGGER IF EXISTS temp.inv_stamp")
                 key = KEYS.get(table, "id")

@@ -12,6 +12,7 @@ import pages.audit_logs as audit_logs
 import pages.batch_management as batch_management
 import pages.pos as pos
 import pages.prescriptions as prescriptions
+import pages.purchasing as purchasing
 import pages.product as product
 import pages.reports as reports
 import pages.returned_items as returned_items
@@ -52,6 +53,9 @@ class PageSmokeTests(unittest.TestCase):
             patch.object(pos, "get_categories", return_value=[]),
             patch.object(pos, "get_products_for_pos", return_value=[]),
             patch.object(prescriptions, "get_prescription_rows", return_value=[]),
+            patch.object(purchasing, "get_purchase_products", return_value=[]),
+            patch.object(purchasing, "get_suppliers", return_value=[]),
+            patch.object(purchasing, "get_purchase_history", return_value=[]),
             patch.object(sales_history, "get_sales_history", return_value=[]),
             patch.object(returned_items, "get_returns_history", return_value=[]),
             patch.object(audit_logs, "get_audit_log_rows", return_value=[]),
@@ -63,6 +67,7 @@ class PageSmokeTests(unittest.TestCase):
                 batch_management.BatchManagementPage(current_user=user),
                 pos.POSPage(current_user=user),
                 prescriptions.PrescriptionsPage(),
+                purchasing.PurchasingPage(current_user=user),
                 sales_history.SalesHistoryPage(current_user=user),
                 returned_items.ReturnedItemsPage(current_user=user),
                 audit_logs.AuditLogsPage(),
