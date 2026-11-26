@@ -10,6 +10,7 @@ from database.db import (
     delete_supplier,
     get_purchase_history,
     get_purchase_products,
+    get_purchase_receipt,
     get_purchase_receipt_items,
     get_suppliers,
     receive_purchase,
@@ -70,6 +71,84 @@ class SupplierDialog(QDialog):
 
     def values(self):
         return {key: field.text().strip() for key, field in self.fields.items()}
+
+
+class PurchaseDetailsDialog(QDialog):
+    def __init__(self, receipt, items, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(T("Purchase details"))
+        self.setModal(True)
+        self.resize(780, 560)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 22, 24, 22)
+        layout.setSpacing(16)
+
+        title = QLabel(T("Purchase details"))
+        title.setStyleSheet(page_title_style())
+        layout.addWidget(title)
+
+        summary = QGridLayout()
+        summary.setHorizontalSpacing(18)
+        summary.setVerticalSpacing(8)
+        details = (
+            ("Reference number", receipt["reference_number"]),
+            ("Supplier", receipt["supplier"]),
+            ("Received date", format_date(receipt["received_date"])),
+            ("Received by", receipt["received_by"]),
+        )
+        for index, (label, value) in enumerate(details):
+            label_widget = QLabel(T(label))
+            label_widget.setStyleSheet(f"color: {TEXT_MUTED}; font-weight: 600;")
+            value_widget = QLabel(str(value or ""))
+            value_widget.setStyleSheet(f"color: {TEXT}; font-weight: 700;")
+            summary.addWidget(label_widget, index // 2 * 2, index % 2)
+            summary.addWidget(value_widget, index // 2 * 2 + 1, index % 2)
+        layout.addLayout(summary)
+
+        item_title = QLabel(T("Received items"))
+        item_title.setStyleSheet(f"color: {TEXT}; font-size: 15px; font-weight: 700;")
+        layout.addWidget(item_title)
+
+        table = QTableWidget(len(items), 6)
+        table.setHorizontalHeaderLabels([
+            T("Product"), T("Batch number"), T("Expiry"), T("Quantity"),
+            T("Unit cost (Ft)"), T("Line total"),
+        ])
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for column in range(1, 6):
+            table.horizontalHeader().setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        for row_index, item in enumerate(items):
+            values = (
+                item["product"], item["batch_number"], format_date(item["expiry_date"]),
+                format_number(item["quantity"], 0), format_money(item["unit_cost"]),
+                format_money(item["total_cost"]),
+            )
+            for column, value in enumerate(values):
+                table.setItem(row_index, column, QTableWidgetItem(str(value)))
+        layout.addWidget(table, 1)
+
+        notes_title = QLabel(T("Delivery notes"))
+        notes_title.setStyleSheet(f"color: {TEXT}; font-size: 15px; font-weight: 700;")
+        layout.addWidget(notes_title)
+        notes = QTextEdit()
+        notes.setReadOnly(True)
+        notes.setPlainText(receipt.get("notes") or T("No delivery notes provided."))
+        notes.setFixedHeight(92)
+        notes.setStyleSheet(input_style())
+        layout.addWidget(notes)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        close = QPushButton(T("Close"))
+        close.setStyleSheet(soft_button_style())
+        close.setMinimumSize(100, 38)
+        close.clicked.connect(self.accept)
+        buttons.addWidget(close)
+        layout.addLayout(buttons)
 
 
 class PurchasingPage(QWidget):
@@ -360,15 +439,12 @@ class PurchasingPage(QWidget):
             self.history_table.setCellWidget(row_index, 7, view)
 
     def view_receipt(self, receipt_id):
+        receipt = get_purchase_receipt(receipt_id)
         rows = get_purchase_receipt_items(receipt_id)
-        lines = [
-            f"{row['product']} | {row['batch_number']} | {row['quantity']} x "
-            f"{format_money(row['unit_cost'])} = {format_money(row['total_cost'])}"
-            for row in rows
-        ]
-        QMessageBox.information(
-            self, T("Purchase details"), "\n".join(lines) or T("No received items found."),
-        )
+        if receipt is None:
+            QMessageBox.warning(self, T("Purchase details"), T("Purchase receipt was not found."))
+            return
+        PurchaseDetailsDialog(receipt, rows, self).exec()
 
     def refresh_suppliers(self, *_):
         search = self.supplier_search.text() if hasattr(self, "supplier_search") else ""

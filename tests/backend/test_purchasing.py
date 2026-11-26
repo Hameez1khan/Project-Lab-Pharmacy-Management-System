@@ -5,6 +5,7 @@ from database.db import (
     delete_supplier,
     get_connection,
     get_purchase_history,
+    get_purchase_receipt,
     receive_purchase,
     save_supplier,
 )
@@ -37,6 +38,7 @@ class PurchasingTests(DatabaseTestCase):
         today = datetime.now().date().isoformat()
         first = receive_purchase(
             self.supplier_id, "INV-1001", today, [self.line(product)],
+            notes="Keep refrigerated after opening.",
             acting_username="admin", acting_role="admin",
         )
         second = receive_purchase(
@@ -54,6 +56,9 @@ class PurchasingTests(DatabaseTestCase):
         self.assertEqual((batch[0], batch[1], batch[2]), (20, 50.0, 1000.0))
         self.assertEqual(item_count, 2)
         self.assertEqual(len(get_purchase_history()), 2)
+        receipt = get_purchase_receipt(first)
+        self.assertEqual(receipt["supplier"], "MediSupply Kft.")
+        self.assertEqual(receipt["notes"], "Keep refrigerated after opening.")
 
         success, message = delete_supplier(self.supplier_id, "admin", "admin")
         self.assertFalse(success)

@@ -1039,6 +1039,19 @@ def get_purchase_receipt_items(receipt_id):
     return [dict(row) for row in rows]
 
 
+def get_purchase_receipt(receipt_id):
+    conn = get_connection()
+    row = conn.execute("""
+        SELECT r.id, r.reference_number, r.received_date, r.received_by, r.notes,
+               s.name AS supplier
+        FROM purchase_receipts r
+        JOIN suppliers s ON s.id=r.supplier_id
+        WHERE r.id=?
+    """, (int(receipt_id),)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 def update_batch_record(batch_id, quantity, expiry_date, price, min_stock_level,
     reason="Batch details edited"):
     conn = get_connection(reason)

@@ -44,6 +44,10 @@ Batch number|Tételszám|رقم الدفعة
 Remove|Eltávolítás|إزالة
 View|Megtekintés|عرض
 Purchase details|Beszerzés részletei|تفاصيل الشراء
+Delivery notes|Szállítási megjegyzések|ملاحظات التسليم
+No delivery notes provided.|Nincs megadva szállítási megjegyzés.|لم يتم تقديم ملاحظات تسليم.
+Purchase receipt was not found.|A beszerzési bizonylat nem található.|لم يتم العثور على إيصال الشراء.
+Close|Bezárás|إغلاق
 No received items found.|Nincsenek átvett tételek.|لم يتم العثور على عناصر مستلمة.
 Purchase receipt P-{receipt:05d} was saved and stock was updated.|A P-{receipt:05d} beszerzési bizonylat mentve, a készlet frissítve.|تم حفظ إيصال الشراء P-{receipt:05d} وتحديث المخزون.
 Delete Supplier|Beszállító törlése|حذف المورد
