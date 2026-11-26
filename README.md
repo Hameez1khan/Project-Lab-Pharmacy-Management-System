@@ -10,7 +10,9 @@ It helps administrators and pharmacists handle:
 - prescription records
 - returned items
 - audit logs
-- basic dashboard summaries
+- dashboard summaries and a 30-day sales chart
+- reports and Excel data exchange
+- database backup and restore
 
 ## What This System Can Do
 
@@ -24,15 +26,16 @@ The application includes:
 - prescription tracking for medicines that require it
 - sales history and receipt download
 - returned items tracking
-- audit logs for important actions
-- dashboard cards for quick business overview
+- audit logs with change history
+- dashboard cards and a 30-day net-sales chart
+- daily and monthly reports, product movement reports, and Excel export
+- safe Excel data merge that skips duplicate records
+- exact database backup and restore
+- English, Hungarian, and Arabic interface languages
 
 ## What You Need Before Running It
 
-Make sure you have:
-
-- **Python 3.11** installed
-- **PyQt6** installed
+Install **Python 3.11** before continuing.
 
 ## Setup
 
@@ -49,10 +52,10 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
-4. Install the required package:
+4. Install the required packages:
 
 ```powershell
-pip install PyQt6
+python -m pip install -r requirements.txt
 ```
 
 ## How to Start the Program
@@ -107,9 +110,11 @@ Project-Lab-Pharmacy-Management-System/
 |- docs/
 |- pages/
 |- scripts/
+|- tests/
 |- login_window.py
 |- main.py
 |- main_window.py
+|- requirements.txt
 |- ui_theme.py
 `- README.md
 ```
@@ -125,7 +130,7 @@ The `docs/` folder contains:
 ## Main Parts of the Program
 
 ### Dashboard
-Shows a quick summary such as medicine count, sales, returned items, low stock, and expiry alerts.
+Shows medicine count, sales, returned items, low stock, expiry alerts, and the last 30 days of net sales.
 
 ### Batch Management
 Used for managing medicine batches, stock quantity, and expiry dates.
@@ -145,24 +150,59 @@ Used for viewing completed sales, downloading receipts, and handling returns.
 ### Returned Items
 Used for viewing completed returns and refund records.
 
+### Reports
+Used for daily or monthly sales summaries, fast and slow movers, low stock, expiring batches, report export, Excel data exchange, and database backup or restore.
+
 ### Audit Logs
 Used for checking important actions performed by users.
 
 ### Settings
-Used for password and account-related management.
+Used for password, account, and language settings.
+
+## Backup and Data Transfer
+
+The **Reports** page provides two different options:
+
+- **Backup database** creates an exact copy of the pharmacy database. Use this for full recovery.
+- **Export data** creates a readable Excel workbook. Use **Merge data** to add records from such a workbook while skipping records already present.
+
+Restoring a database replaces the current data. The application creates a safety backup first and then closes so the restored database can be loaded on the next start.
+
+## Run the Tests
+
+Install the development tools:
+
+```powershell
+python -m pip install -r requirements-dev.txt
+```
+
+Run the backend and interface checks:
+
+```powershell
+python -m unittest discover -s tests/backend -v
+$env:QT_QPA_PLATFORM = "offscreen"
+python -m unittest discover -s tests/ui -v
+```
+
+Measure local checkout database performance:
+
+```powershell
+python scripts\verification\benchmark_checkout.py
+```
+
+## Create a Windows Application
+
+After installing the development tools, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\packaging\build_windows.ps1
+```
+
+The packaged application is created in `dist\KhalisDawa\`.
 
 ## Important Notes
 
-- The program uses a local database stored inside the project.
-- Reports are saved as **HTML files** in the user's **Downloads** folder.
+- The program uses a local SQLite database stored in `database\pharmacy.db` when run from source.
+- Report summaries and pharmacy data are exported as Excel workbooks.
+- Application logs are stored in the current user's local application-data folder.
 - This system is designed for desktop use.
-
-## Future Improvements
-
-Possible future updates may include:
-
-- easier Windows installation
-- automatic dependency installation
-- automated tests
-- database backup and restore tools
-- more advanced reports
