@@ -230,7 +230,7 @@ class ReportsPage(QWidget):
             return
         QMessageBox.information(self, T(title), T(message or "Export complete."))
 
-    def start_file_job(self, title, progress_text, path, action):
+    def start_file_job(self, title, progress_text, path, action, on_success=None):
         progress = QProgressDialog(progress_text, "", 0, 0, self)
         progress.setWindowTitle(title)
         progress.setCancelButton(None)
@@ -244,7 +244,12 @@ class ReportsPage(QWidget):
             self.current_user.get("role", ""),
         )
         thread = FileActionThread(action, path, identity, self)
-        job = {"thread": thread, "progress": progress, "title": title}
+        job = {
+            "thread": thread,
+            "progress": progress,
+            "title": title,
+            "on_success": on_success,
+        }
         self.file_jobs.append(job)
         thread.succeeded.connect(
             lambda message, current=job: self.finish_file_job(current, message=message)
@@ -260,6 +265,8 @@ class ReportsPage(QWidget):
         if error:
             QMessageBox.warning(self, job["title"], T(str(error)))
         else:
+            if job["on_success"]:
+                job["on_success"]()
             QMessageBox.information(
                 self, job["title"], T(message or "Export complete.")
             )
@@ -362,17 +369,28 @@ class ReportsPage(QWidget):
     def merge(self):
         from database.workbook import import_book
 
-        def apply(path):
-            answer = QMessageBox.question(
-                self, T("Merge pharmacy data"),
-                T("Add missing records from this workbook? Existing records will not be overwritten."),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if answer != QMessageBox.StandardButton.Yes:
-                return T("No changes made.")
-            added, skipped = import_book(path)
-            self.refresh()
+        path, _ = QFileDialog.getOpenFileName(
+            self, T("Merge pharmacy data"), "", T("Excel Workbook (*.xlsx)")
+        )
+        if not path:
+            return
+        answer = QMessageBox.question(
+            self, T("Merge pharmacy data"),
+            T("Add missing records from this workbook? Existing records will not be overwritten."),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        def apply(selected_path):
+            added, skipped = import_book(selected_path)
             return TF("Added: {added}\nAlready present: {skipped}", added=added, skipped=skipped)
 
-        self.file_action("Merge pharmacy data", apply, True)
+        self.start_file_job(
+            T("Merge pharmacy data"),
+            T("Merging pharmacy data..."),
+            path,
+            apply,
+            on_success=self.refresh,
+        )
