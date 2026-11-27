@@ -5,22 +5,7 @@ from PyQt6.QtWidgets import (
     QApplication, QProgressDialog, QStyle, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
-
-
-class FileActionThread(QThread):
-    succeeded = pyqtSignal(object)
-    failed = pyqtSignal(str)
-
-    def __init__(self, action, path, parent=None):
-        super().__init__(parent)
-        self.action = action
-        self.path = path
-
-    def run(self):
-        try:
-            self.succeeded.emit(self.action(self.path))
-        except Exception as error:
-            self.failed.emit(str(error))
+from database.inventory_audit import operator
 from database.reporting import report_data
 from i18n import T, TF, format_money, format_number
 from ui_theme import (
@@ -29,9 +14,30 @@ from ui_theme import (
 )
 
 
+class FileActionThread(QThread):
+    succeeded = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, action, path, identity, parent=None):
+        super().__init__(parent)
+        self.action = action
+        self.path = path
+        self.identity = identity
+
+    def run(self):
+        token = operator.set(self.identity)
+        try:
+            self.succeeded.emit(self.action(self.path))
+        except Exception as error:
+            self.failed.emit(str(error))
+        finally:
+            operator.reset(token)
+
+
 class ReportsPage(QWidget):
     def __init__(self, current_user):
         super().__init__()
+        self.current_user = current_user
         self.admin = current_user["role"].lower() == "admin"
         self.data = {}
         self.file_jobs = []
@@ -233,7 +239,11 @@ class ReportsPage(QWidget):
         progress.setAutoClose(False)
         progress.show()
 
-        thread = FileActionThread(action, path, self)
+        identity = (
+            self.current_user.get("username", "System"),
+            self.current_user.get("role", ""),
+        )
+        thread = FileActionThread(action, path, identity, self)
         job = {"thread": thread, "progress": progress, "title": title}
         self.file_jobs.append(job)
         thread.succeeded.connect(
