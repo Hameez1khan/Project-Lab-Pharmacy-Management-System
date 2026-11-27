@@ -40,7 +40,7 @@ AUDITED_DYNAMIC_ARGUMENTS = {
     "row_data['payment_method']", "receipt_data['payment_method']",
     "report_data['payment_method']", "row['operation']", "row['phase']",
     "row['metric_kind']", "message or 'Export complete.'",
-    "value", "row['status'].replace('_', ' ').title()", "row['movement']",
+    "value", "progress_text", "row['status'].replace('_', ' ').title()", "row['movement']",
     "order['status'].replace('_', ' ').title()",
     "order.get('notes')",
 }

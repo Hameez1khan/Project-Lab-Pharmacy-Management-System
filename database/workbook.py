@@ -80,9 +80,6 @@ def columns(c, table):
 
 def put(ws, values):
     ws.append(list(values))
-    for cell in ws[ws.max_row]:
-        if isinstance(cell.value, str):
-            cell.data_type = "s"
 
 
 def encode(value):
@@ -122,8 +119,18 @@ def _business_sheet(book, title, headers, rows, currency_columns=(), date_column
         for cell in ws[column][1:]:
             if isinstance(cell.value, datetime):
                 cell.number_format = "yyyy-mm-dd hh:mm"
-    for index, column in enumerate(ws.columns, 1):
-        width = max((len(str(cell.value)) if cell.value is not None else 0 for cell in column), default=0)
+    sample_end = min(ws.max_row, 501)
+    for index in range(1, ws.max_column + 1):
+        column = ws.iter_rows(
+            min_row=1, max_row=sample_end, min_col=index, max_col=index
+        )
+        width = max(
+            (
+                len(str(row[0].value)) if row[0].value is not None else 0
+                for row in column
+            ),
+            default=0,
+        )
         ws.column_dimensions[get_column_letter(index)].width = min(max(width + 3, 11), 42)
     return ws
 
@@ -257,15 +264,24 @@ def _add_visible_sheets(book, c):
           f"#{r[5]:05d}" if r[5] else "") for n, r in enumerate(prescriptions, 1)),
         date_columns=("F",))
 
-    audits = c.execute("""SELECT username,role,description,created_at FROM audit_logs
-        ORDER BY created_at,id""")
+    audits = c.execute("""
+        SELECT username,role,description,created_at FROM (
+            SELECT id,username,role,description,created_at
+            FROM audit_logs ORDER BY id DESC LIMIT 5000
+        ) ORDER BY created_at,id
+    """)
     _business_sheet(book, "Audit History", ("No.", "User", "Role", "Action", "Date"),
         ((n, r[0], r[1], r[2], _display_datetime(r[3])) for n, r in enumerate(audits, 1)),
         date_columns=("E",))
 
     changes = []
-    for n, row in enumerate(c.execute("""SELECT actor,role,entity,record_id,action,
-            old_state,new_state,reason,created_at FROM inventory_events ORDER BY created_at,id"""), 1):
+    for n, row in enumerate(c.execute("""
+            SELECT actor,role,entity,record_id,action,old_state,new_state,reason,created_at
+            FROM (
+                SELECT id,actor,role,entity,record_id,action,old_state,new_state,reason,created_at
+                FROM inventory_events ORDER BY created_at DESC,id DESC LIMIT 5000
+            ) ORDER BY created_at,id
+        """), 1):
         before = json.loads(row[5] or "{}")
         after = json.loads(row[6] or "{}")
         state = after or before

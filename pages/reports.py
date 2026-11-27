@@ -1,9 +1,26 @@
-from PyQt6.QtCore import QDate, Qt
+from PyQt6.QtCore import QDate, QThread, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView, QComboBox, QDateEdit, QFileDialog, QFrame, QGridLayout,
     QHeaderView, QHBoxLayout, QLabel, QMessageBox, QPushButton, QStackedWidget,
-    QApplication, QStyle, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QApplication, QProgressDialog, QStyle, QTableWidget, QTableWidgetItem,
+    QVBoxLayout, QWidget,
 )
+
+
+class FileActionThread(QThread):
+    succeeded = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, action, path, parent=None):
+        super().__init__(parent)
+        self.action = action
+        self.path = path
+
+    def run(self):
+        try:
+            self.succeeded.emit(self.action(self.path))
+        except Exception as error:
+            self.failed.emit(str(error))
 from database.reporting import report_data
 from i18n import T, TF, format_money, format_number
 from ui_theme import (
@@ -17,6 +34,7 @@ class ReportsPage(QWidget):
         super().__init__()
         self.admin = current_user["role"].lower() == "admin"
         self.data = {}
+        self.file_jobs = []
         self.setObjectName("reportsPage")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 18)
@@ -188,19 +206,59 @@ class ReportsPage(QWidget):
             )
         self.stack.setCurrentWidget(self.table)
 
-    def file_action(self, title, action, opening=False):
+    def file_action(self, title, action, opening=False, background=False,
+                    progress_text="Working..."):
         dialog = QFileDialog.getOpenFileName if opening else QFileDialog.getSaveFileName
         path, _ = dialog(self, T(title), "", T("Excel Workbook (*.xlsx)"))
         if not path:
             return
         if not opening and not path.lower().endswith(".xlsx"):
             path += ".xlsx"
+        if background:
+            self.start_file_job(T(title), T(progress_text), path, action)
+            return
         try:
             message = action(path)
         except Exception as e:
             QMessageBox.warning(self, T(title), T(str(e)))
             return
         QMessageBox.information(self, T(title), T(message or "Export complete."))
+
+    def start_file_job(self, title, progress_text, path, action):
+        progress = QProgressDialog(progress_text, "", 0, 0, self)
+        progress.setWindowTitle(title)
+        progress.setCancelButton(None)
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.show()
+
+        thread = FileActionThread(action, path, self)
+        job = {"thread": thread, "progress": progress, "title": title}
+        self.file_jobs.append(job)
+        thread.succeeded.connect(
+            lambda message, current=job: self.finish_file_job(current, message=message)
+        )
+        thread.failed.connect(
+            lambda error, current=job: self.finish_file_job(current, error=error)
+        )
+        thread.finished.connect(lambda current=job: self.release_file_job(current))
+        thread.start()
+
+    def finish_file_job(self, job, message=None, error=None):
+        job["progress"].close()
+        if error:
+            QMessageBox.warning(self, job["title"], T(str(error)))
+        else:
+            QMessageBox.information(
+                self, job["title"], T(message or "Export complete.")
+            )
+
+    def release_file_job(self, job):
+        if job in self.file_jobs:
+            self.file_jobs.remove(job)
+        job["thread"].deleteLater()
+        job["progress"].deleteLater()
 
     def save_report(self):
         from openpyxl import Workbook
@@ -230,7 +288,12 @@ class ReportsPage(QWidget):
 
     def save_data(self):
         from database.workbook import export_book
-        self.file_action("Export private pharmacy data", export_book)
+        self.file_action(
+            "Export private pharmacy data",
+            export_book,
+            background=True,
+            progress_text="Exporting pharmacy data...",
+        )
 
     def backup_database(self):
         from database.backup import create_database_backup
