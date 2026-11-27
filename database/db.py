@@ -212,6 +212,7 @@ def initialize_database():
         dosage_form TEXT,
         barcode TEXT UNIQUE,
         selling_price REAL NOT NULL,
+        purchase_cost REAL NOT NULL DEFAULT 0,
         min_stock_level INTEGER DEFAULT 0,
         category TEXT,
         manufacturer TEXT,
@@ -227,8 +228,11 @@ def initialize_database():
             ADD COLUMN prescription_required INTEGER DEFAULT 0
         """)
 
-
-
+    if "purchase_cost" not in product_columns:
+        cursor.execute("""
+            ALTER TABLE products
+            ADD COLUMN purchase_cost REAL NOT NULL DEFAULT 0
+        """)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS batches (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -258,6 +262,21 @@ def initialize_database():
             ALTER TABLE batches
             ADD COLUMN discount_applied_date TEXT
         """)
+
+    cursor.execute("""
+        UPDATE products
+        SET purchase_cost = COALESCE(
+            (
+                SELECT b.purchase_unit_cost
+                FROM batches b
+                WHERE b.product_id = products.id
+                ORDER BY b.id DESC
+                LIMIT 1
+            ),
+            selling_price
+        )
+        WHERE purchase_cost IS NULL OR purchase_cost <= 0
+    """)
 
 
 
@@ -552,15 +571,19 @@ def initialize_database():
     conn.commit()
     conn.close()
 
-def insert_product(name, dosage_form, barcode, price, min_stock=10, category=None, manufacturer=None):
+def insert_product(name, dosage_form, barcode, price, min_stock=10, category=None,
+                   manufacturer=None, purchase_cost=None):
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
         INSERT INTO products
-        (name, dosage_form, barcode, selling_price, min_stock_level, category, manufacturer)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (name, dosage_form, barcode, price, min_stock, category, manufacturer))
+        (name, dosage_form, barcode, selling_price, purchase_cost,
+         min_stock_level, category, manufacturer)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (name, dosage_form, barcode, price,
+          price if purchase_cost is None else purchase_cost,
+          min_stock, category, manufacturer))
 
     conn.commit()
     conn.close()
@@ -923,16 +946,7 @@ def get_purchase_products():
         SELECT
             p.id,
             p.name,
-            COALESCE(
-                (
-                    SELECT b.purchase_unit_cost
-                    FROM batches b
-                    WHERE b.product_id = p.id
-                    ORDER BY b.id DESC
-                    LIMIT 1
-                ),
-                p.selling_price
-            ) AS unit_cost
+            p.purchase_cost AS unit_cost
         FROM products p
         ORDER BY LOWER(p.name)
     """).fetchall()
@@ -1714,7 +1728,7 @@ def get_product_rows(search_text="", category="All Categories", limit=None, offs
             p.dosage_form,
             p.barcode,
             p.selling_price,
-            b.purchase_unit_cost,
+            p.purchase_cost,
             p.min_stock_level,
             p.category,
             p.prescription_required,
@@ -1735,6 +1749,7 @@ def get_product_rows(search_text="", category="All Categories", limit=None, offs
             p.dosage_form,
             p.barcode,
             p.selling_price,
+            p.purchase_cost,
             p.min_stock_level,
             p.category,
             p.prescription_required
@@ -1755,6 +1770,7 @@ def get_product_rows(search_text="", category="All Categories", limit=None, offs
             "dosage_form": row["dosage_form"] or "",
             "barcode": row["barcode"] or "",
             "selling_price": row["selling_price"],
+            "purchase_cost": row["purchase_cost"],
             "min_stock_level": row["min_stock_level"],
             "category": row["category"] or "General",
             "available_stock": row["available_stock"],
@@ -1782,6 +1798,7 @@ def add_product_record(
     dosage_form,
     barcode,
     selling_price,
+    purchase_cost,
     min_stock_level,
     category,
     manufacturer=None,
@@ -1820,17 +1837,19 @@ def add_product_record(
             dosage_form,
             barcode,
             selling_price,
+            purchase_cost,
             min_stock_level,
             category,
             manufacturer,
             prescription_required
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         name.strip(),
         dosage_form.strip(),
         barcode.strip() or None,
         float(selling_price),
+        float(purchase_cost),
         int(min_stock_level),
         category.strip() or "General",
         manufacturer,
@@ -1849,6 +1868,7 @@ def update_product_record(
     dosage_form,
     barcode,
     selling_price,
+    purchase_cost,
     min_stock_level,
     category,
     prescription_required
@@ -1887,6 +1907,7 @@ def update_product_record(
             dosage_form = ?,
             barcode = ?,
             selling_price = ?,
+            purchase_cost = ?,
             min_stock_level = ?,
             category = ?,
             prescription_required = ?
@@ -1896,6 +1917,7 @@ def update_product_record(
         dosage_form.strip(),
         barcode.strip() or None,
         float(selling_price),
+        float(purchase_cost),
         int(min_stock_level),
         category.strip() or "General",
         1 if prescription_required else 0,

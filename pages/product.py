@@ -66,6 +66,7 @@ class ProductFormDialog(QDialog):
         self.name_input = QLineEdit()
         self.dosage_form_input = QLineEdit()
         self.barcode_input = QLineEdit()
+        self.purchase_cost_input = QLineEdit()
         self.price_input = QLineEdit()
         self.min_stock_input = QLineEdit()
         self.category_input = QLineEdit()
@@ -78,6 +79,7 @@ class ProductFormDialog(QDialog):
             ("Medicine", self.name_input),
             ("Dosage Form", self.dosage_form_input),
             ("Barcode", self.barcode_input),
+            ("Purchase Cost", self.purchase_cost_input),
             ("Selling Price", self.price_input),
             ("Min Stock", self.min_stock_input),
             ("Category", self.category_input),
@@ -94,6 +96,7 @@ class ProductFormDialog(QDialog):
             self.name_input.setText(product_row["name"])
             self.dosage_form_input.setText(product_row["dosage_form"])
             self.barcode_input.setText(product_row["barcode"])
+            self.purchase_cost_input.setText(str(product_row["purchase_cost"]))
             self.price_input.setText(str(product_row["selling_price"]))
             self.min_stock_input.setText(str(product_row["min_stock_level"]))
             self.category_input.setText(product_row["category"])
@@ -127,6 +130,7 @@ class ProductFormDialog(QDialog):
             "name": self.name_input.text().strip(),
             "dosage_form": self.dosage_form_input.text().strip(),
             "barcode": self.barcode_input.text().strip(),
+            "purchase_cost": self.purchase_cost_input.text().strip(),
             "selling_price": self.price_input.text().strip(),
             "min_stock_level": self.min_stock_input.text().strip(),
             "category": self.category_input.text().strip(),
@@ -378,8 +382,11 @@ class ProductPage(QWidget):
         layout.setContentsMargins(24, 0, 24, 0)
         layout.setHorizontalSpacing(18)
 
-        labels = ["NAME", "FORM", "BARCODE", "PRICE", "MIN STOCK", "CATEGORY", "RX", "AVAILABLE"]
-        stretches = [3, 2, 3, 2, 2, 2, 1, 2]
+        labels = [
+            "NAME", "FORM", "BARCODE", "PURCHASE COST", "SELLING PRICE",
+            "MIN STOCK", "CATEGORY", "RX", "AVAILABLE",
+        ]
+        stretches = [3, 2, 3, 2, 2, 2, 2, 1, 2]
 
 
         if self.is_admin:
@@ -459,8 +466,23 @@ class ProductPage(QWidget):
             }
         """)
 
-        price = force_ltr(QLabel(format_money(row_data["selling_price"], 0)), right=True)
-        price.setStyleSheet("""
+        purchase_cost = force_ltr(
+            QLabel(format_money(row_data["purchase_cost"], 2)), right=True
+        )
+        purchase_cost.setStyleSheet("""
+            QLabel {
+                color: #334155;
+                font-size: 13px;
+                font-weight: 700;
+                background: transparent;
+                border: none;
+            }
+        """)
+
+        selling_price = force_ltr(
+            QLabel(format_money(row_data["selling_price"], 0)), right=True
+        )
+        selling_price.setStyleSheet("""
             QLabel {
                 color: #147a61;
                 font-size: 13px;
@@ -531,9 +553,12 @@ class ProductPage(QWidget):
             }}
         """)
 
-        widgets.extend([name, dosage_form, barcode, price, min_stock, category, prescription, available_stock])
+        widgets.extend([
+            name, dosage_form, barcode, purchase_cost, selling_price, min_stock,
+            category, prescription, available_stock,
+        ])
 
-        stretches = [3, 2, 3, 2, 2, 2, 1, 2]
+        stretches = [3, 2, 3, 2, 2, 2, 2, 1, 2]
 
 
         if self.is_admin:
@@ -619,14 +644,17 @@ class ProductPage(QWidget):
         available_layout.addStretch()
         available_wrap.setLayout(available_layout)
 
-        widgets = [name, dosage_form, barcode, price, min_stock, category_wrap, prescription_wrap, available_wrap]
+        widgets = [
+            name, dosage_form, barcode, purchase_cost, selling_price, min_stock,
+            category_wrap, prescription_wrap, available_wrap,
+        ]
 
         if self.is_admin:
             widgets.append(actions)
 
         for index, widget in enumerate(widgets):
             alignment = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-            if index in {5, 6, 7}:
+            if index in {6, 7, 8}:
                 alignment = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
             if self.is_admin and index == len(widgets) - 1:
                 alignment = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
@@ -650,6 +678,7 @@ class ProductPage(QWidget):
             payload["dosage_form"],
             payload["barcode"],
             payload["selling_price"],
+            payload["purchase_cost"],
             payload["min_stock_level"],
             payload["category"],
             prescription_required=payload["prescription_required"],
@@ -684,6 +713,7 @@ class ProductPage(QWidget):
             payload["dosage_form"],
             payload["barcode"],
             payload["selling_price"],
+            payload["purchase_cost"],
             payload["min_stock_level"],
             payload["category"],
             payload["prescription_required"],
@@ -732,7 +762,9 @@ class ProductPage(QWidget):
         self.refresh_table()
 
     def validate_payload(self, payload):
-        required = ["name", "selling_price", "min_stock_level", "category"]
+        required = [
+            "name", "purchase_cost", "selling_price", "min_stock_level", "category",
+        ]
         if any(not payload[key] for key in required):
             QMessageBox.warning(self, T("Missing Data"), T("Please fill in all required fields."))
             return False
@@ -743,6 +775,18 @@ class ProductPage(QWidget):
                 raise ValueError
         except ValueError:
             QMessageBox.warning(self, T("Invalid Data"), T("Selling price must be a valid non-negative number."))
+            return False
+
+        try:
+            purchase_cost = float(payload["purchase_cost"])
+            if purchase_cost <= 0:
+                raise ValueError
+        except ValueError:
+            QMessageBox.warning(
+                self,
+                T("Invalid Data"),
+                T("Purchase cost must be a valid positive number."),
+            )
             return False
 
         try:

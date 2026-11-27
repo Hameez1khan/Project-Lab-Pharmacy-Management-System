@@ -10,6 +10,10 @@ _language = "en"
 # English source text | Hungarian | Arabic. Khalis Dawa is intentionally unchanged.
 _catalog = r"""
 Dashboard|Áttekintés|لوحة المعلومات
+Purchase Cost|Beszerzési költség|تكلفة الشراء
+PURCHASE COST|BESZERZÉSI KÖLTSÉG|تكلفة الشراء
+SELLING PRICE|ELADÁSI ÁR|سعر البيع
+Purchase cost must be a valid positive number.|A beszerzési költségnek érvényes pozitív számnak kell lennie.|يجب أن تكون تكلفة الشراء رقمًا موجبًا صالحًا.
 WORKSPACE|MUNKATERÜLET|مساحة العمل
 INVENTORY|KÉSZLET|المخزون
 INSIGHTS|ELEMZÉSEK|التحليلات

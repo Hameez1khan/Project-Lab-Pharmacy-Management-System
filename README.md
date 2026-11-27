@@ -19,7 +19,7 @@ It helps administrators and pharmacists handle:
 The application includes:
 
 - separate login access for **Admin** and **Pharmacist**
-- product management with barcode, category, price, and dosage form
+- product management with barcode, category, purchase cost, selling price, and dosage form
 - batch-based stock tracking
 - supplier management, purchase orders, partial/full receiving, and purchase history
 - reorder suggestions based on recent sales, usable stock, delivery time, and safety stock

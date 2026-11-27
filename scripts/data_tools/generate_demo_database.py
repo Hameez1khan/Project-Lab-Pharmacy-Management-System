@@ -136,7 +136,11 @@ def build_products(rng, count):
         name = f"{generic} {strength} {form}"
         price_factor = 0.88 + ((index * 17) % 31) / 100
         price = round(base_price * price_factor / 10) * 10
-        rows.append((name, form, ean13(590000000000 + index), price, rng.randint(8, 30), category, manufacturer, int(rx)))
+        purchase_cost = round(price * rng.uniform(0.58, 0.72), 2)
+        rows.append((
+            name, form, ean13(590000000000 + index), price, purchase_cost,
+            rng.randint(8, 30), category, manufacturer, int(rx),
+        ))
     return rows
 
 
@@ -190,8 +194,8 @@ def generate(args):
 
         products = build_products(rng, args.products)
         conn.executemany("""
-            INSERT INTO products(name,dosage_form,barcode,selling_price,min_stock_level,category,manufacturer,prescription_required)
-            VALUES(?,?,?,?,?,?,?,?)
+            INSERT INTO products(name,dosage_form,barcode,selling_price,purchase_cost,min_stock_level,category,manufacturer,prescription_required)
+            VALUES(?,?,?,?,?,?,?,?,?)
         """, products)
         product_rows = [dict(row) for row in conn.execute("SELECT * FROM products ORDER BY id")]
 
@@ -215,7 +219,7 @@ def generate(args):
                 conn.execute("""
                     INSERT INTO purchase_order_items(purchase_order_id,product_id,ordered_quantity,received_quantity,unit_cost)
                     VALUES(?,?,?,?,?)
-                """, (order_id, product["id"], ordered, received, round(product["selling_price"] * rng.uniform(.52, .72), 2)))
+                """, (order_id, product["id"], ordered, received, product["purchase_cost"]))
 
         # Four purchase-backed batches per product, spread over the operating period.
         batches_by_product = defaultdict(list)
@@ -231,7 +235,7 @@ def generate(args):
                 elif product["id"] % 37 == 0 and slot == 1:
                     expiry = now + timedelta(days=rng.randint(5, 45))
                 quantity = rng.randint(260, 520)
-                cost = round(product["selling_price"] * rng.uniform(.52, .72), 2)
+                cost = float(product["purchase_cost"])
                 batch_specs.append({
                     "product": product, "received": received, "expiry": expiry,
                     "initial": quantity, "remaining": quantity, "cost": cost,

@@ -32,10 +32,12 @@ class DatabaseBehaviorTests(DatabaseTestCase):
         self.assertEqual(len(get_batch_rows("", "", 25, 0)), 1)
         self.assertEqual(len(get_products_for_pos("", "")), 1)
 
-    def test_purchase_product_uses_latest_batch_cost(self):
-        product = self.add_product("Purchase Cost Medicine", price=125)
+    def test_purchase_product_uses_product_purchase_cost(self):
+        product = self.add_product(
+            "Purchase Cost Medicine", price=125, purchase_cost=78.25
+        )
         self.add_batch(product, "COST-001", 10, cost=72.50)
-        self.add_batch(product, "COST-002", 10, cost=78.25)
+        self.add_batch(product, "COST-002", 10, cost=81.75)
 
         row = next(item for item in get_purchase_products() if item["id"] == product)
         self.assertEqual(row["unit_cost"], 78.25)

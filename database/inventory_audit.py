@@ -3,7 +3,7 @@ import json
 
 operator = ContextVar("operator", default=("System", ""))
 fields = {
-    "products": "id name dosage_form barcode selling_price min_stock_level category manufacturer prescription_required",
+    "products": "id name dosage_form barcode selling_price purchase_cost min_stock_level category manufacturer prescription_required",
     "batches": "id product_id batch_number expiry_date quantity purchase_unit_cost total_purchase_cost discount_percent discount_applied_date",
 }
 
@@ -22,11 +22,12 @@ def install(c):
             return f"json_object({pairs})"
 
         for action in ("INSERT", "UPDATE", "DELETE"):
+            c.execute(f"DROP TRIGGER IF EXISTS inv_v1_{table}_{action}")
             old = "NULL" if action == "INSERT" else snapshot("OLD")
             new = "NULL" if action == "DELETE" else snapshot("NEW")
             key = "OLD.id" if action == "DELETE" else "NEW.id"
             guard = f"WHEN {old} IS NOT {new}" if action == "UPDATE" else ""
-            c.execute(f"""CREATE TRIGGER IF NOT EXISTS inv_v1_{table}_{action}
+            c.execute(f"""CREATE TRIGGER IF NOT EXISTS inv_v2_{table}_{action}
                 AFTER {action} ON {table} {guard} BEGIN
                 INSERT INTO inventory_events(id,entity,record_id,action,old_state,new_state)
                 VALUES(lower(hex(randomblob(16))),'{table}',{key},'{action}',{old},{new});

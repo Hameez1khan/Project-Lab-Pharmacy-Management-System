@@ -149,12 +149,14 @@ def _add_visible_sheets(book, c):
     overview.column_dimensions["A"].width = 32
     overview.column_dimensions["B"].width = 22
 
-    products = c.execute("""SELECT name,dosage_form,barcode,selling_price,min_stock_level,
+    products = c.execute("""SELECT name,dosage_form,barcode,purchase_cost,selling_price,min_stock_level,
         category,manufacturer,prescription_required FROM products ORDER BY lower(name)""")
-    _business_sheet(book, "Products", ("No.", "Product", "Form", "Barcode", "Selling price",
-        "Minimum stock", "Category", "Manufacturer", "Prescription"),
-        ((n, r[0], r[1], r[2], r[3], r[4], r[5], r[6], "Yes" if r[7] else "No")
-         for n, r in enumerate(products, 1)), currency_columns=("E",))
+    _business_sheet(book, "Products", (
+        "No.", "Product", "Form", "Barcode", "Purchase cost", "Selling price",
+        "Minimum stock", "Category", "Manufacturer", "Prescription",
+    ),
+        ((n, r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], "Yes" if r[8] else "No")
+         for n, r in enumerate(products, 1)), currency_columns=("E", "F"))
 
     inventory = c.execute("""SELECT p.name,b.batch_number,b.expiry_date,b.quantity,
         b.purchase_unit_cost,b.total_purchase_cost,b.discount_percent

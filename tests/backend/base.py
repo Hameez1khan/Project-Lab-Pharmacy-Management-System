@@ -22,13 +22,14 @@ class DatabaseTestCase(unittest.TestCase):
             os.environ["KHALIS_DAWA_DB_PATH"] = self.previous_path
         self.temp_dir.cleanup()
 
-    def add_product(self, name="Medicine", price=100.0, minimum=5):
+    def add_product(self, name="Medicine", price=100.0, minimum=5, purchase_cost=None):
+        purchase_cost = price * 0.6 if purchase_cost is None else purchase_cost
         with closing(get_connection("Test setup")) as conn, conn:
             cursor = conn.execute("""INSERT INTO products
-                (name,dosage_form,barcode,selling_price,min_stock_level,category,
+                (name,dosage_form,barcode,selling_price,purchase_cost,min_stock_level,category,
                  manufacturer,prescription_required)
-                VALUES(?,?,?,?,?,'General','Test',0)""",
-                (name, "Tablet", f"code-{name}", price, minimum))
+                VALUES(?,?,?,?,?,?,'General','Test',0)""",
+                (name, "Tablet", f"code-{name}", price, purchase_cost, minimum))
             return cursor.lastrowid
 
     def add_batch(self, product_id, number, quantity, expiry="2099-12-31", cost=50.0):
