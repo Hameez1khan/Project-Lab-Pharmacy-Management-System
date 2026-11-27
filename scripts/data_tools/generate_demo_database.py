@@ -88,6 +88,7 @@ MANUFACTURERS = [
     "Caspian Pharmaceuticals", "Horizon Generics", "Riverstone Pharma", "Central Medica",
 ]
 PACKS = (10, 14, 20, 28, 30, 50, 60, 100)
+PACKAGE_STYLES = ("blister", "bottle", "carton", "unit-dose")
 PAYMENTS = ("Cash", "Card", "Mobile wallet")
 FIRST_NAMES = ("Amina", "Omar", "Sara", "Yusuf", "Mariam", "Adam", "Lina", "Karim", "Nora", "Tariq")
 LAST_NAMES = ("Khan", "Hassan", "Farooq", "Nagy", "Kovacs", "Szabo", "Ahmed", "Rahman", "Farkas", "Molnar")
@@ -128,10 +129,13 @@ def build_products(rng, count):
         pack = PACKS[(cycle // len(strengths)) % len(PACKS)]
         manufacturer = MANUFACTURERS[(index * 7 + cycle) % len(MANUFACTURERS)]
         brand = manufacturer.split()[0]
-        series_names = ("Classic", "Plus", "Care", "Active")
-        series_index = cycle // (len(strengths) * len(PACKS))
-        series = series_names[series_index % len(series_names)]
-        name = f"{brand} {generic} {strength} {form} {series} - pack {pack}"
+        package_style = PACKAGE_STYLES[
+            (cycle // (len(strengths) * len(PACKS))) % len(PACKAGE_STYLES)
+        ]
+        name = (
+            f"{brand} {generic} {strength} {form} - "
+            f"{package_style} pack of {pack}"
+        )
         price_factor = 0.88 + ((index * 17) % 31) / 100
         price = round(base_price * price_factor / 10) * 10
         rows.append((name, form, ean13(590000000000 + index), price, rng.randint(8, 30), category, manufacturer, int(rx)))
