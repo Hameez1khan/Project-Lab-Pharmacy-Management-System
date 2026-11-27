@@ -371,6 +371,15 @@ class PurchaseOrderDialog(QDialog):
             product.setCurrentIndex(product.findData(item["product_id"]))
             quantity.setValue(int(item["ordered_quantity"]))
             cost.setValue(float(item["unit_cost"]))
+        def apply_product_cost():
+            product_id = product.currentData()
+            selected = next(
+                (entry for entry in self.products if entry["id"] == product_id),
+                None,
+            )
+            if selected:
+                cost.setValue(float(selected["unit_cost"]))
+        product.currentIndexChanged.connect(apply_product_cost)
         refresh()
         for column, widget in enumerate((product, quantity, cost, total, remove)):
             self.table.setCellWidget(row, column, widget)
@@ -1010,6 +1019,15 @@ class PurchasingPage(QWidget):
         )
         quantity.valueChanged.connect(refresh_total)
         cost.valueChanged.connect(refresh_total)
+        def apply_product_cost():
+            product_id = product.currentData()
+            selected = next(
+                (entry for entry in self.products if entry["id"] == product_id),
+                None,
+            )
+            if selected:
+                cost.setValue(float(selected["unit_cost"]))
+        product.currentIndexChanged.connect(apply_product_cost)
         refresh_total()
         for column, widget in enumerate((product, batch, expiry, quantity, cost, total, remove)):
             self.items_table.setCellWidget(row, column, widget)

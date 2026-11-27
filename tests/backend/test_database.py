@@ -12,6 +12,7 @@ from database.db import (
     get_product_row_count,
     get_product_rows,
     get_products_for_pos,
+    get_purchase_products,
     is_password_hash,
     process_sale_return,
     register_pharmacist,
@@ -30,6 +31,14 @@ class DatabaseBehaviorTests(DatabaseTestCase):
         self.assertEqual(get_batch_row_count("", ""), 1)
         self.assertEqual(len(get_batch_rows("", "", 25, 0)), 1)
         self.assertEqual(len(get_products_for_pos("", "")), 1)
+
+    def test_purchase_product_uses_latest_batch_cost(self):
+        product = self.add_product("Purchase Cost Medicine", price=125)
+        self.add_batch(product, "COST-001", 10, cost=72.50)
+        self.add_batch(product, "COST-002", 10, cost=78.25)
+
+        row = next(item for item in get_purchase_products() if item["id"] == product)
+        self.assertEqual(row["unit_cost"], 78.25)
 
     def test_connection_enforces_foreign_keys(self):
         with closing(get_connection()) as conn:

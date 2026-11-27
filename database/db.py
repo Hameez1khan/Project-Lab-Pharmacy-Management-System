@@ -919,11 +919,32 @@ def add_batch_record(product_name, batch_number, quantity, expiry_date, purchase
 
 def get_purchase_products():
     conn = get_connection()
-    rows = conn.execute(
-        "SELECT id, name FROM products ORDER BY LOWER(name)"
-    ).fetchall()
+    rows = conn.execute("""
+        SELECT
+            p.id,
+            p.name,
+            COALESCE(
+                (
+                    SELECT b.purchase_unit_cost
+                    FROM batches b
+                    WHERE b.product_id = p.id
+                    ORDER BY b.id DESC
+                    LIMIT 1
+                ),
+                p.selling_price
+            ) AS unit_cost
+        FROM products p
+        ORDER BY LOWER(p.name)
+    """).fetchall()
     conn.close()
-    return [{"id": row["id"], "name": row["name"]} for row in rows]
+    return [
+        {
+            "id": row["id"],
+            "name": row["name"],
+            "unit_cost": float(row["unit_cost"] or 0),
+        }
+        for row in rows
+    ]
 
 
 def get_suppliers(search_text=""):
