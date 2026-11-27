@@ -164,10 +164,10 @@ def generate(args):
         conn.execute("DELETE FROM users")
         users = [
             ("admin", hash_password("1234"), "admin"),
-            ("nora.pharmacist", hash_password("DemoPharma2026!"), "pharmacist"),
-            ("adam.pharmacist", hash_password("DemoPharma2026!"), "pharmacist"),
-            ("lina.pharmacist", hash_password("DemoPharma2026!"), "pharmacist"),
-            ("karim.pharmacist", hash_password("DemoPharma2026!"), "pharmacist"),
+            ("nora", hash_password("Pharmacy2026!"), "pharmacist"),
+            ("adam", hash_password("Pharmacy2026!"), "pharmacist"),
+            ("lina", hash_password("Pharmacy2026!"), "pharmacist"),
+            ("karim", hash_password("Pharmacy2026!"), "pharmacist"),
         ]
         conn.executemany("INSERT INTO users(username,password,role) VALUES(?,?,?)", users)
         user_ids = [row["id"] for row in conn.execute("SELECT id FROM users WHERE role='pharmacist'")]

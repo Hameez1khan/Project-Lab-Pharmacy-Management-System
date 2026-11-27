@@ -118,7 +118,7 @@ The generator is repeatable and supports custom sizes. Run `python scripts\data_
 Dataset accounts:
 
 - **Administrator:** `admin` / `1234`
-- **Pharmacist:** `nora.pharmacist` / `DemoPharma2026!`
+- **Pharmacist:** `nora` / `Pharmacy2026!`
 
 The generated database is ignored by Git.
 
