@@ -15,8 +15,9 @@ from PyQt6.QtWidgets import (
 
 from pathlib import Path
 
-from database.db import get_prescription_rows
+from database.db import get_prescription_row_count, get_prescription_rows
 from i18n import T, TF, force_ltr, format_date, is_rtl, language
+from ui_components import PaginationBar
 from ui_theme import (
     BLUE,
     filter_card_style,
@@ -53,7 +54,7 @@ class PrescriptionsPage(QWidget):
         title = QLabel(T("Prescriptions"))
         title.setStyleSheet("""
             QLabel {
-                color: #0f172a;
+                color: #18251f;
                 font-size: 22px;
                 font-weight: 800;
                 background: transparent;
@@ -64,7 +65,7 @@ class PrescriptionsPage(QWidget):
         subtitle = QLabel(T("Track sensitive medicine sales"))
         subtitle.setStyleSheet("""
             QLabel {
-                color: #64748b;
+                color: #68776f;
                 font-size: 13px;
                 background: transparent;
                 border: none;
@@ -84,7 +85,7 @@ class PrescriptionsPage(QWidget):
             QFrame {
                 background-color: white;
                 border: 1px solid #e9f0f6;
-                border-radius: 20px;
+                border-radius: 8px;
             }
         """)
 
@@ -96,14 +97,14 @@ class PrescriptionsPage(QWidget):
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText(T("Search by SSN, customer, or medicine..."))
         self.search_input.setFixedHeight(44)
-        self.search_input.textChanged.connect(self.refresh_table)
+        self.search_input.textChanged.connect(lambda: self.refresh_table(reset=True))
         self.search_input.setStyleSheet("""
             QLineEdit {
                 background-color: #fbfdff;
                 border: 1px solid #e2eaf3;
                 border-radius: 12px;
                 padding: 0 16px;
-                color: #0f172a;
+                color: #18251f;
                 font-size: 14px;
             }
 
@@ -132,13 +133,17 @@ class PrescriptionsPage(QWidget):
         scroll.setStyleSheet(scroll_area_style())
 
         main_layout.addWidget(scroll)
+        self.pagination = PaginationBar(self.refresh_table, page_size=25)
+        main_layout.addWidget(self.pagination)
 
         self.setLayout(main_layout)
         self.setStyleSheet(page_root_style("prescriptionsPage"))
 
         self.refresh_table()
 
-    def refresh_table(self):
+    def refresh_table(self, *_args, reset=False):
+        if reset and hasattr(self, "pagination"):
+            self.pagination.reset()
         while self.table_layout.count():
             item = self.table_layout.takeAt(0)
             widget = item.widget()
@@ -150,7 +155,7 @@ class PrescriptionsPage(QWidget):
             QFrame {
                 background-color: white;
                 border: 1px solid #e9f0f6;
-                border-radius: 20px;
+                border-radius: 8px;
             }
         """)
 
@@ -160,7 +165,9 @@ class PrescriptionsPage(QWidget):
 
         layout.addWidget(self.make_header_row())
 
-        rows = get_prescription_rows(self.search_input.text())
+        search = self.search_input.text()
+        self.pagination.set_total(get_prescription_row_count(search))
+        rows = get_prescription_rows(search, self.pagination.page_size, self.pagination.offset)
 
         if not rows:
             empty = QLabel(T("No prescription-tracked sales found"))
@@ -217,7 +224,7 @@ class PrescriptionsPage(QWidget):
         row.setFixedHeight(46)
         row.setStyleSheet("""
             QFrame#prescriptionRow {
-                border-top: 1px solid #edf2f7;
+                border-top: 1px solid #edf2ef;
                 background-color: white;
                 border-radius: 0px;
             }
@@ -236,7 +243,7 @@ class PrescriptionsPage(QWidget):
 
         ssn.setStyleSheet("""
             QLabel {
-                color: #0f172a;
+                color: #18251f;
                 font-size: 12px;
                 font-weight: 700;
                 background: transparent;
@@ -256,7 +263,7 @@ class PrescriptionsPage(QWidget):
         customer_name.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
         medicine.setStyleSheet("""
             QLabel {
-                color: #0f172a;
+                color: #18251f;
                 font-size: 13px;
                 font-weight: 700;
                 background: transparent;
@@ -270,7 +277,7 @@ class PrescriptionsPage(QWidget):
         amount.setStyleSheet("""
             QLabel {
                 background-color: #eef4ff;
-                color: #2563eb;
+                color: #147a61;
                 border-radius: 11px;
                 padding: 2px 12px;
                 font-size: 11px;
@@ -281,7 +288,7 @@ class PrescriptionsPage(QWidget):
         created_at.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
         created_at.setStyleSheet("""
             QLabel {
-                color: #475569;
+                color: #43534b;
                 font-size: 12px;
                 font-weight: 600;
                 letter-spacing: 0;
@@ -301,7 +308,7 @@ class PrescriptionsPage(QWidget):
                 border-radius: 10px;
                 font-size: 12px;
                 font-weight: 700;
-                color: #0f172a;
+                color: #18251f;
                 padding: 0 12px;
             }
 
@@ -373,7 +380,7 @@ class PrescriptionsPage(QWidget):
                     font-family: Arial, sans-serif;
                     margin: 0;
                     padding: 24px;
-                    color: #111827;
+                    color: #18251f;
                     background: white;
                 }}
 
@@ -414,7 +421,7 @@ class PrescriptionsPage(QWidget):
                     margin: 0;
                     font-size: 34px;
                     font-weight: 800;
-                    color: #111827;
+                    color: #18251f;
                 }}
 
                 .subtitle {{
@@ -430,7 +437,7 @@ class PrescriptionsPage(QWidget):
                 }}
 
                 .details strong {{
-                    color: #111827;
+                    color: #18251f;
                 }}
 
                 .summary-table {{
@@ -540,7 +547,7 @@ class PrescriptionsPage(QWidget):
                 width = wide if width_code == "w" else narrow
                 if index % 2 == 0:
                     rects.append(
-                        f'<rect x="{x}" y="0" width="{width}" height="{height}" fill="#111827" />'
+                        f'<rect x="{x}" y="0" width="{width}" height="{height}" fill="#18251f" />'
                     )
                 x += width
             x += gap

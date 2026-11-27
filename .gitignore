@@ -11,6 +11,7 @@ ENV/
 
 # Local database/runtime data
 database/pharmacy.db
+database/demo_*.db
 *.db-shm
 *.db-wal
 

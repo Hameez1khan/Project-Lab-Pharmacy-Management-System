@@ -1,6 +1,6 @@
 from pathlib import Path
 from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPixmap
-from PyQt6.QtCore import QPointF, QRectF, Qt
+from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QPushButton,
     QScrollArea,
     QSizePolicy,
     QVBoxLayout,
@@ -16,9 +17,11 @@ from PyQt6.QtWidgets import (
 from i18n import T, format_date, format_money
 
 from database.db import (
+    get_connection,
     get_dashboard_stats,
     get_expiring_soon,
     get_low_stock_products,
+    get_recent_sales,
 )
 try:
     from database.db import get_dashboard_sales_trend
@@ -27,10 +30,20 @@ except ImportError:
 from ui_theme import (
     BORDER,
     BORDER_SOFT,
+    DANGER,
+    DANGER_BG,
+    INFO,
+    INFO_BG,
     PRIMARY,
+    PRIMARY_DARK,
+    PRIMARY_SOFT,
+    SUCCESS,
+    SUCCESS_BG,
     SURFACE_SOFT,
     TEXT,
     TEXT_MUTED,
+    WARNING,
+    WARNING_BG,
     badge_style,
     list_widget_style,
     page_root_style,
@@ -66,19 +79,19 @@ class NetSalesChart(QWidget):
         bounds = QRectF(54, 20, max(1, self.width() - 78), max(1, self.height() - 60))
         values = [max(0.0, float(point[1] or 0)) for point in self.points]
         if not values or max(values) <= 0:
-            painter.setPen(QColor("#64748b"))
+            painter.setPen(QColor("#68776f"))
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, T("No sales activity in the last 30 days"))
             painter.end()
             return
 
         high = max(values)
-        painter.setPen(QPen(QColor("#e2e8f0"), 1))
+        painter.setPen(QPen(QColor("#dfe8e3"), 1))
         for step in range(5):
             y = bounds.bottom() - bounds.height() * step / 4
             painter.drawLine(QPointF(bounds.left(), y), QPointF(bounds.right(), y))
-            painter.setPen(QColor("#64748b"))
+            painter.setPen(QColor("#68776f"))
             painter.drawText(QRectF(0, y - 9, 48, 18), Qt.AlignmentFlag.AlignRight, f"{high * step / 4:,.0f}")
-            painter.setPen(QPen(QColor("#e2e8f0"), 1))
+            painter.setPen(QPen(QColor("#dfe8e3"), 1))
 
         width = bounds.width() / max(1, len(values) - 1)
         path = QPainterPath()
@@ -94,15 +107,15 @@ class NetSalesChart(QWidget):
             area.lineTo(point)
         area.lineTo(bounds.right(), bounds.bottom())
         area.closeSubpath()
-        painter.fillPath(area, QColor(219, 234, 254, 150))
-        painter.setPen(QPen(QColor("#2563eb"), 3))
+        painter.fillPath(area, QColor(232, 244, 239, 190))
+        painter.setPen(QPen(QColor(PRIMARY), 3))
         painter.drawPath(path)
-        painter.setBrush(QColor("#2563eb"))
+        painter.setBrush(QColor(PRIMARY))
         painter.setPen(Qt.PenStyle.NoPen)
         for point in coordinates:
             painter.drawEllipse(point, 3.5, 3.5)
 
-        painter.setPen(QColor("#64748b"))
+        painter.setPen(QColor("#68776f"))
         for index in sorted({0, len(self.points) // 2, len(self.points) - 1}):
             x = bounds.left() + index * width
             label_left = min(max(x - 45, bounds.left()), bounds.right() - 90)
@@ -112,8 +125,13 @@ class NetSalesChart(QWidget):
 
 
 class DashboardPage(QWidget):
-    def __init__(self):
+    navigate_requested = pyqtSignal(str)
+
+    def __init__(self, current_user=None):
         super().__init__()
+
+        self.current_user = current_user or {}
+        self.current_role = (self.current_user.get("role") or "admin").lower()
 
         self.setObjectName("dashboardPage")
 
@@ -140,13 +158,13 @@ class DashboardPage(QWidget):
             }
 
             QScrollBar::handle:vertical {
-                background: #cbd5e1;
+                background: #bfcbc5;
                 min-height: 40px;
                 border-radius: 5px;
             }
 
             QScrollBar::handle:vertical:hover {
-                background: #94a3b8;
+                background: #96a89f;
             }
 
             QScrollBar::add-line:vertical,
@@ -169,21 +187,25 @@ class DashboardPage(QWidget):
         main_layout.setContentsMargins(30, 26, 30, 28)
         main_layout.setSpacing(22)
 
-        title = QLabel(T("Dashboard"))
+        title = QLabel(T("Overview" if self.current_role == "admin" else "My workspace"))
         title.setStyleSheet("""
             QLabel {
-                color: #0f172a;
-                font-size: 22px;
-                font-weight: 800;
+                color: #18251f;
+                font-size: 24px;
+                font-weight: 700;
                 background: transparent;
                 border: none;
             }
         """)
 
-        subtitle = QLabel(T("Home Page"))
+        subtitle = QLabel(T(
+            "A clear picture of pharmacy operations"
+            if self.current_role == "admin"
+            else "Everything needed for today's shift"
+        ))
         subtitle.setStyleSheet("""
             QLabel {
-                color: #64748b;
+                color: #68776f;
                 font-size: 13px;
                 background: transparent;
                 border: none;
@@ -196,20 +218,45 @@ class DashboardPage(QWidget):
         title_layout.addWidget(subtitle)
         main_layout.addLayout(title_layout)
 
+        quick_actions = QHBoxLayout()
+        quick_actions.setSpacing(8)
+        actions = (
+            (("New sale", "pos"), ("Review batches", "batches"), ("View reports", "reports"))
+            if self.current_role == "admin"
+            else (("New sale", "pos"), ("View prescriptions", "prescriptions"), ("Sales history", "sales"))
+        )
+        for index, (label, destination) in enumerate(actions):
+            button = QPushButton(T(label))
+            button.setMinimumHeight(36)
+            button.setProperty("primary", index == 0)
+            button.clicked.connect(
+                lambda _checked=False, key=destination: self.navigate_requested.emit(key)
+            )
+            quick_actions.addWidget(button)
+        quick_actions.addStretch()
+        main_layout.addLayout(quick_actions)
+
         self.cards_layout = QGridLayout()
         self.cards_layout.setHorizontalSpacing(18)
         self.cards_layout.setVerticalSpacing(16)
 
         self.card_values = {}
 
-        cards = [
-            ("Medicines", "#2563eb", ICON_DIR / "Medicine.png", "#f3f6ff", 0, 0),
-            ("Sales", "#16a34a", "$", "#effcf4", 0, 1),
-            ("Returned Items", "#7c3aed", "R", "#f5f3ff", 0, 2),
-            ("Expiration Alert", "#ea580c", "!", "#fff7ed", 1, 0),
-            ("Low Stock", "#dc2626", "L", "#fff1f2", 1, 1),
-            ("Revenue", "#0f766e", "Ft", "#effcf9", 1, 2),
-        ]
+        if self.current_role == "admin":
+            cards = [
+                ("Medicines", INFO, ICON_DIR / "Medicine.png", INFO_BG, 0, 0),
+                ("Sales", SUCCESS, "$", SUCCESS_BG, 0, 1),
+                ("Returned Items", "#7357a8", "R", "#f3effa", 0, 2),
+                ("Expiration Alert", WARNING, "!", WARNING_BG, 1, 0),
+                ("Low Stock", DANGER, "L", DANGER_BG, 1, 1),
+                ("Revenue", PRIMARY, "Ft", PRIMARY_SOFT, 1, 2),
+            ]
+        else:
+            cards = [
+                ("Sales Today", SUCCESS, "$", SUCCESS_BG, 0, 0),
+                ("Prescriptions Today", INFO, "Rx", INFO_BG, 0, 1),
+                ("Returns Today", "#7357a8", "R", "#f3effa", 0, 2),
+            ]
 
         for label, value_color, icon, icon_bg, row, column in cards:
             card, value_label = self.create_stat_card(
@@ -231,7 +278,7 @@ class DashboardPage(QWidget):
         chart_layout = QVBoxLayout(chart_panel)
         chart_layout.setContentsMargins(22, 18, 22, 18)
         chart_title = QLabel(T("Daily net sales - last 30 days"))
-        chart_title.setStyleSheet("color:#0f172a;font-size:14px;font-weight:800;background:transparent")
+        chart_title.setStyleSheet(f"color:{TEXT};font-size:14px;font-weight:700;background:transparent")
         self.sales_chart = NetSalesChart()
         chart_layout.addWidget(chart_title)
         chart_layout.addWidget(self.sales_chart)
@@ -261,6 +308,15 @@ class DashboardPage(QWidget):
         bottom_layout.addWidget(expiry_panel, 1)
         main_layout.addLayout(bottom_layout)
 
+        self.recent_sales_list = QListWidget()
+        recent_sales_panel = self.create_list_panel(
+            title=T("Recent transactions"),
+            action_symbol="5",
+            list_widget=self.recent_sales_list,
+        )
+        recent_sales_panel.setMinimumHeight(220)
+        main_layout.addWidget(recent_sales_panel)
+
         content.setLayout(main_layout)
         scroll_area.setWidget(content)
         root_layout.addWidget(scroll_area)
@@ -268,7 +324,7 @@ class DashboardPage(QWidget):
         self.setLayout(root_layout)
         self.setStyleSheet("""
             QWidget#dashboardPage {
-                background-color: #f8fafc;
+                background-color: #f4f7f5;
             }
         """)
 
@@ -279,8 +335,8 @@ class DashboardPage(QWidget):
         card.setStyleSheet("""
             QFrame {
                 background-color: white;
-                border: 1px solid #dbe7f3;
-                border-radius: 20px;
+                border: 1px solid #dfe8e3;
+                border-radius: 10px;
             }
         """)
 
@@ -324,7 +380,7 @@ class DashboardPage(QWidget):
                 background-color: {icon_bg};
                 color: {value_color};
                 border: none;
-                border-radius: 15px;
+                border-radius: 10px;
                 padding: 8px;
                 font-size: 17px;
                 font-weight: 700;
@@ -358,8 +414,8 @@ class DashboardPage(QWidget):
         panel.setStyleSheet("""
             QFrame {
                 background-color: white;
-                border: 1px solid #dbe7f3;
-                border-radius: 20px;
+                border: 1px solid #dfe8e3;
+                border-radius: 10px;
             }
         """)
 
@@ -372,7 +428,7 @@ class DashboardPage(QWidget):
         title_label = QLabel(T(title))
         title_label.setStyleSheet(f"""
             QLabel {{
-                color: #0f172a;
+                color: #18251f;
                 font-size: 14px;
                 font-weight: 800;
                 background: transparent;
@@ -385,8 +441,8 @@ class DashboardPage(QWidget):
         action.setFixedSize(28, 28)
         action.setStyleSheet(f"""
             QLabel {{
-                background-color: {"#fff7ed" if warning else SURFACE_SOFT};
-                color: {"#ea580c" if warning else PRIMARY};
+                background-color: {"#fff7e8" if warning else SURFACE_SOFT};
+                color: {"#b97818" if warning else PRIMARY};
                 border: 1px solid #f3e2c7;
                 border-radius: 10px;
                 font-size: 11px;
@@ -409,7 +465,7 @@ class DashboardPage(QWidget):
                 background-color: white;
                 border: none;
                 outline: none;
-                color: #0f172a;
+                color: #18251f;
                 font-size: 13px;
                 font-family: "Segoe UI";
             }
@@ -426,13 +482,13 @@ class DashboardPage(QWidget):
             }
 
             QScrollBar::handle:vertical {
-                background: #cbd5e1;
+                background: #bfcbc5;
                 min-height: 40px;
                 border-radius: 4px;
             }
 
             QScrollBar::handle:vertical:hover {
-                background: #94a3b8;
+                background: #96a89f;
             }
 
             QScrollBar::add-line:vertical,
@@ -457,6 +513,15 @@ class DashboardPage(QWidget):
         return panel
 
     def refresh_data(self):
+        if self.current_role == "pharmacist":
+            self._refresh_pharmacist_stats()
+            trend = get_dashboard_sales_trend(days=30) if get_dashboard_sales_trend else []
+            self.sales_chart.set_points(trend)
+            self.refresh_low_stock_products()
+            self.refresh_expiring_soon()
+            self.refresh_recent_sales()
+            return
+
         medicines, sales, returned_items, expired, low_stock, revenue = get_dashboard_stats()
 
         self.card_values["Medicines"].setText(str(medicines))
@@ -478,6 +543,40 @@ class DashboardPage(QWidget):
 
         self.refresh_low_stock_products()
         self.refresh_expiring_soon()
+        self.refresh_recent_sales()
+
+    def refresh_recent_sales(self):
+        self.recent_sales_list.clear()
+        rows = get_recent_sales()
+        if not rows:
+            self.add_empty_item(self.recent_sales_list, T("No recent transactions."))
+            return
+        for row in rows:
+            text = "   ".join((
+                row["receipt_number"],
+                format_date(row["sale_datetime"]),
+                T("Cash") if row["payment_method"].lower() == "cash" else T("Card"),
+                format_money(row["total_amount"]),
+            ))
+            item = QListWidgetItem(text)
+            item.setSizeHint(item.sizeHint().expandedTo(item.sizeHint()))
+            self.recent_sales_list.addItem(item)
+
+    def _refresh_pharmacist_stats(self):
+        conn = get_connection()
+        sales = conn.execute(
+            "SELECT COUNT(*) AS count FROM sales WHERE date(sale_datetime)=date('now')"
+        ).fetchone()["count"]
+        prescriptions = conn.execute(
+            "SELECT COUNT(*) AS count FROM prescriptions WHERE date(created_at)=date('now')"
+        ).fetchone()["count"]
+        returns = conn.execute(
+            "SELECT COUNT(*) AS count FROM returns WHERE date(return_datetime)=date('now')"
+        ).fetchone()["count"]
+        conn.close()
+        self.card_values["Sales Today"].setText(str(sales))
+        self.card_values["Prescriptions Today"].setText(str(prescriptions))
+        self.card_values["Returns Today"].setText(str(returns))
 
     def refresh_low_stock_products(self):
         self.low_stock_list.clear()
@@ -565,7 +664,7 @@ class DashboardPage(QWidget):
             label = QLabel(T(text).upper())
             label.setStyleSheet("""
                 QLabel {
-                    color: #64748b;
+                    color: #68776f;
                     font-size: 11px;
                     font-weight: 700;
                     letter-spacing: 0px;
@@ -590,7 +689,7 @@ class DashboardPage(QWidget):
             QWidget#lowStockRow {
                 background: transparent;
                 border: none;
-                border-bottom: 1px solid #edf2f7;
+                border-bottom: 1px solid #edf2ef;
             }
         """)
         layout = QGridLayout()
@@ -601,7 +700,7 @@ class DashboardPage(QWidget):
         name_label = QLabel(name)
         name_label.setStyleSheet("""
             QLabel {
-                color: #0f172a;
+                color: #18251f;
                 font-size: 13px;
                 font-weight: 600;
                 background: transparent;
@@ -611,14 +710,14 @@ class DashboardPage(QWidget):
 
         available_badge = self._make_value_badge(
             f"{available_units}",
-            bg="#fff7ed" if available_units == 0 else "#eff6ff",
-            fg="#ea580c" if available_units == 0 else "#2563eb",
+            bg=WARNING_BG if available_units == 0 else INFO_BG,
+            fg=WARNING if available_units == 0 else INFO,
         )
 
         minimum_badge = self._make_value_badge(
             f"{min_required_units}",
             bg="#f8fafc",
-            fg="#475569",
+            fg="#43534b",
         )
 
         centered = Qt.AlignmentFlag.AlignVCenter
@@ -640,7 +739,7 @@ class DashboardPage(QWidget):
             QWidget#expiringRow {
                 background: transparent;
                 border: none;
-                border-bottom: 1px solid #edf2f7;
+                border-bottom: 1px solid #edf2ef;
             }
         """)
         layout = QGridLayout()
@@ -651,7 +750,7 @@ class DashboardPage(QWidget):
         name_label = QLabel(name)
         name_label.setStyleSheet("""
             QLabel {
-                color: #0f172a;
+                color: #18251f;
                 font-size: 13px;
                 font-weight: 600;
                 background: transparent;
@@ -659,12 +758,12 @@ class DashboardPage(QWidget):
             }
         """)
 
-        batch_badge = self._make_value_badge(batch, bg="#eff6ff", fg="#2563eb")
+        batch_badge = self._make_value_badge(batch, bg=PRIMARY_SOFT, fg=PRIMARY)
 
         expiry_label = QLabel(format_date(expiry))
         expiry_label.setStyleSheet("""
             QLabel {
-                color: #475569;
+                color: #43534b;
                 font-size: 13px;
                 font-weight: 500;
                 background: transparent;

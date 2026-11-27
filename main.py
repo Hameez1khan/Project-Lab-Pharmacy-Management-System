@@ -12,14 +12,17 @@ def main():
 
     from PyQt6.QtWidgets import QApplication
     from database.db import initialize_database
-    from i18n import choose_language
+    from i18n import initialize_language
     from login_window import LoginWindow
+    from ui_theme import app_stylesheet
 
     initialize_database()
     app = QApplication(sys.argv)
-    if not choose_language(app):
-        logger.info("Application closed at language selection")
-        return 0
+    app.setApplicationName("Khalis Dawa")
+    app.setOrganizationName("KhalisDawa")
+    app.setStyle("Fusion")
+    app.setStyleSheet(app_stylesheet())
+    initialize_language(app)
 
     window = LoginWindow()
     window.showMaximized()

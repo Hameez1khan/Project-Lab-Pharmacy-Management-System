@@ -18,8 +18,10 @@ from database.db import (
     delete_return_record,
     get_return_report_data,
     get_returns_history,
+    get_returns_history_count,
 )
 from i18n import T, TF, force_ltr, format_date, format_money, is_rtl, language
+from ui_components import PaginationBar
 from ui_theme import (
     PRIMARY,
     filter_card_style,
@@ -57,7 +59,7 @@ class ReturnedItemsPage(QWidget):
         title = QLabel(T("Returned Items"))
         title.setStyleSheet("""
             QLabel {
-                color: #0f172a;
+                color: #18251f;
                 font-size: 22px;
                 font-weight: 800;
                 background: transparent;
@@ -68,7 +70,7 @@ class ReturnedItemsPage(QWidget):
         subtitle = QLabel(T("Track completed returns and refund documents"))
         subtitle.setStyleSheet("""
             QLabel {
-                color: #64748b;
+                color: #68776f;
                 font-size: 13px;
                 background: transparent;
                 border: none;
@@ -84,7 +86,7 @@ class ReturnedItemsPage(QWidget):
             QFrame {
                 background-color: white;
                 border: 1px solid #e9f0f6;
-                border-radius: 20px;
+                border-radius: 8px;
             }
         """)
 
@@ -96,14 +98,14 @@ class ReturnedItemsPage(QWidget):
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText(T("Search by return ID or sale receipt..."))
         self.search_input.setFixedHeight(44)
-        self.search_input.textChanged.connect(self.refresh_table)
+        self.search_input.textChanged.connect(lambda: self.refresh_table(reset=True))
         self.search_input.setStyleSheet("""
             QLineEdit {
                 background-color: #fbfdff;
                 border: 1px solid #e2eaf3;
                 border-radius: 12px;
                 padding: 0 16px;
-                color: #0f172a;
+                color: #18251f;
                 font-size: 14px;
             }
 
@@ -131,13 +133,17 @@ class ReturnedItemsPage(QWidget):
         scroll.setStyleSheet(scroll_area_style())
 
         main_layout.addWidget(scroll)
+        self.pagination = PaginationBar(self.refresh_table, page_size=25)
+        main_layout.addWidget(self.pagination)
         self.setLayout(main_layout)
 
         self.setStyleSheet(page_root_style("returnedItemsPage"))
 
         self.refresh_table()
 
-    def refresh_table(self):
+    def refresh_table(self, *_args, reset=False):
+        if reset and hasattr(self, "pagination"):
+            self.pagination.reset()
         while self.table_layout.count():
             item = self.table_layout.takeAt(0)
             widget = item.widget()
@@ -149,7 +155,7 @@ class ReturnedItemsPage(QWidget):
             QFrame {
                 background-color: white;
                 border: 1px solid #e9f0f6;
-                border-radius: 20px;
+                border-radius: 8px;
             }
         """)
 
@@ -159,7 +165,9 @@ class ReturnedItemsPage(QWidget):
 
         layout.addWidget(self.make_header_row())
 
-        rows = get_returns_history(self.search_input.text())
+        search = self.search_input.text()
+        self.pagination.set_total(get_returns_history_count(search))
+        rows = get_returns_history(search, self.pagination.page_size, self.pagination.offset)
 
         if not rows:
             empty = QLabel(T("No returned items found"))
@@ -228,7 +236,7 @@ class ReturnedItemsPage(QWidget):
         row.setFixedHeight(76)
         row.setStyleSheet("""
             QFrame#returnedItemRow {
-                border-top: 1px solid #edf2f7;
+                border-top: 1px solid #edf2ef;
                 background-color: white;
                 border-radius: 0px;
             }
@@ -251,7 +259,7 @@ class ReturnedItemsPage(QWidget):
 
         receipt_id.setStyleSheet("""
             QLabel {
-                color: #0f172a;
+                color: #18251f;
                 font-size: 14px;
                 font-weight: 700;
                 background: transparent;
@@ -270,7 +278,7 @@ class ReturnedItemsPage(QWidget):
         """)
         date.setStyleSheet("""
             QLabel {
-                color: #475569;
+                color: #43534b;
                 font-size: 13px;
                 font-weight: 500;
                 background: transparent;
@@ -289,7 +297,7 @@ class ReturnedItemsPage(QWidget):
         """)
         source_sale.setStyleSheet("""
             QLabel {
-                color: #0f172a;
+                color: #18251f;
                 font-size: 14px;
                 font-weight: 700;
                 background: transparent;
@@ -308,7 +316,7 @@ class ReturnedItemsPage(QWidget):
                 border-radius: 10px;
                 font-size: 12px;
                 font-weight: 700;
-                color: #0f172a;
+                color: #18251f;
                 padding: 0 12px;
             }
 
@@ -330,7 +338,7 @@ class ReturnedItemsPage(QWidget):
                 border-radius: 10px;
                 font-size: 12px;
                 font-weight: 700;
-                color: #dc2626;
+                color: #c84b4b;
                 padding: 0 12px;
             }
 
@@ -457,7 +465,7 @@ class ReturnedItemsPage(QWidget):
                     font-family: Arial, sans-serif;
                     margin: 0;
                     padding: 24px;
-                    color: #111827;
+                    color: #18251f;
                     background: white;
                 }}
 
@@ -481,7 +489,7 @@ class ReturnedItemsPage(QWidget):
                 .invoice-label {{
                     font-size: 28px;
                     font-weight: 800;
-                    color: #111827;
+                    color: #18251f;
                 }}
 
                 .brand-block {{
@@ -500,7 +508,7 @@ class ReturnedItemsPage(QWidget):
                     margin: 0;
                     font-size: 34px;
                     font-weight: 800;
-                    color: #111827;
+                    color: #18251f;
                 }}
 
                 .brand-subtitle {{
@@ -524,7 +532,7 @@ class ReturnedItemsPage(QWidget):
                 }}
 
                 .meta strong {{
-                    color: #111827;
+                    color: #18251f;
                 }}
 
                 table {{
@@ -550,7 +558,7 @@ class ReturnedItemsPage(QWidget):
                     width: 320px;
                     margin-left: auto;
                     margin-top: 18px;
-                    border: 1px solid #111827;
+                    border: 1px solid #18251f;
                 }}
 
                 .total-row {{
@@ -559,7 +567,7 @@ class ReturnedItemsPage(QWidget):
                     padding: 12px 16px;
                     font-size: 15px;
                     font-weight: 700;
-                    background: #111827;
+                    background: #18251f;
                     color: white;
                 }}
 

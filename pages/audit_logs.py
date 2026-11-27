@@ -10,8 +10,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from database.db import get_audit_log_rows
+from database.db import get_audit_log_count, get_audit_log_rows
 from i18n import T, format_date, translate_audit_description
+from ui_components import PaginationBar
 from ui_theme import (
     filter_card_style,
     header_caps_style,
@@ -44,7 +45,7 @@ class AuditLogsPage(QWidget):
         title = QLabel(T("Audit Logs"))
         title.setStyleSheet("""
             QLabel {
-                color: #0f172a;
+                color: #18251f;
                 font-size: 22px;
                 font-weight: 800;
                 background: transparent;
@@ -55,7 +56,7 @@ class AuditLogsPage(QWidget):
         subtitle = QLabel(T("Track actions performed by admins and pharmacists"))
         subtitle.setStyleSheet("""
             QLabel {
-                color: #64748b;
+                color: #68776f;
                 font-size: 13px;
                 background: transparent;
                 border: none;
@@ -74,7 +75,7 @@ class AuditLogsPage(QWidget):
             QFrame {
                 background-color: white;
                 border: 1px solid #e9f0f6;
-                border-radius: 20px;
+                border-radius: 8px;
             }
         """)
 
@@ -86,14 +87,14 @@ class AuditLogsPage(QWidget):
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText(T("Search by username, role, or action..."))
         self.search_input.setFixedHeight(44)
-        self.search_input.textChanged.connect(self.refresh_table)
+        self.search_input.textChanged.connect(lambda: self.refresh_table(reset=True))
         self.search_input.setStyleSheet("""
             QLineEdit {
                 background-color: #fbfdff;
                 border: 1px solid #e2eaf3;
                 border-radius: 12px;
                 padding: 0 16px;
-                color: #0f172a;
+                color: #18251f;
                 font-size: 14px;
             }
 
@@ -121,13 +122,17 @@ class AuditLogsPage(QWidget):
         scroll.setStyleSheet(scroll_area_style())
 
         main_layout.addWidget(scroll)
+        self.pagination = PaginationBar(self.refresh_table, page_size=25)
+        main_layout.addWidget(self.pagination)
 
         self.setLayout(main_layout)
         self.setStyleSheet(page_root_style("auditLogsPage"))
 
         self.refresh_table()
 
-    def refresh_table(self):
+    def refresh_table(self, *_args, reset=False):
+        if reset and hasattr(self, "pagination"):
+            self.pagination.reset()
         while self.table_layout.count():
             item = self.table_layout.takeAt(0)
             widget = item.widget()
@@ -139,7 +144,7 @@ class AuditLogsPage(QWidget):
             QFrame {
                 background-color: white;
                 border: 1px solid #e9f0f6;
-                border-radius: 20px;
+                border-radius: 8px;
             }
         """)
 
@@ -149,7 +154,9 @@ class AuditLogsPage(QWidget):
 
         layout.addWidget(self.make_header_row())
 
-        rows = get_audit_log_rows(self.search_input.text())
+        search = self.search_input.text()
+        self.pagination.set_total(get_audit_log_count(search))
+        rows = get_audit_log_rows(search, self.pagination.page_size, self.pagination.offset)
 
         if not rows:
             empty = QLabel(T("No audit logs found"))
@@ -204,7 +211,7 @@ class AuditLogsPage(QWidget):
         row.setFixedHeight(76)
         row.setStyleSheet("""
             QFrame#auditLogRow {
-                border-top: 1px solid #edf2f7;
+                border-top: 1px solid #edf2ef;
                 background-color: white;
                 border-radius: 0px;
             }
@@ -226,7 +233,7 @@ class AuditLogsPage(QWidget):
 
         username.setStyleSheet("""
             QLabel {
-                color: #0f172a;
+                color: #18251f;
                 font-size: 14px;
                 font-weight: 700;
                 background: transparent;
@@ -235,7 +242,7 @@ class AuditLogsPage(QWidget):
         """)
         role.setStyleSheet("""
             QLabel {
-                color: #475569;
+                color: #43534b;
                 font-size: 13px;
                 font-weight: 600;
                 background: transparent;
@@ -244,7 +251,7 @@ class AuditLogsPage(QWidget):
         """)
         description.setStyleSheet("""
             QLabel {
-                color: #0f172a;
+                color: #18251f;
                 font-size: 14px;
                 font-weight: 600;
                 background: transparent;
@@ -253,7 +260,7 @@ class AuditLogsPage(QWidget):
         """)
         created_at.setStyleSheet("""
             QLabel {
-                color: #475569;
+                color: #43534b;
                 font-size: 13px;
                 font-weight: 500;
                 background: transparent;

@@ -25,6 +25,7 @@ from database.db import (
     add_audit_log,
     add_batch_record,
     delete_batch_record,
+    get_batch_row_count,
     get_batch_rows,
     get_categories,
     get_product_by_name,
@@ -48,6 +49,7 @@ from ui_theme import (
     table_container_style,
     table_row_style,
 )
+from ui_components import PaginationBar
 
 
 
@@ -172,7 +174,7 @@ class BatchManagementPage(QWidget):
         title = QLabel(T("Batch-based Inventory Management"))
         title.setStyleSheet("""
             QLabel {
-                color: #0f172a;
+                color: #18251f;
                 font-size: 22px;
                 font-weight: 800;
                 background: transparent;
@@ -183,7 +185,7 @@ class BatchManagementPage(QWidget):
         subtitle = QLabel(T("Product Batch Manager"))
         subtitle.setStyleSheet("""
             QLabel {
-                color: #64748b;
+                color: #68776f;
                 font-size: 13px;
                 background: transparent;
                 border: none;
@@ -199,7 +201,7 @@ class BatchManagementPage(QWidget):
         add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         add_btn.setStyleSheet("""
             QPushButton {
-                background-color: #22c55e;
+                background-color: #147a61;
                 color: white;
                 border: none;
                 border-radius: 12px;
@@ -225,7 +227,7 @@ class BatchManagementPage(QWidget):
             QFrame {
                 background-color: white;
                 border: 1px solid #e9f0f6;
-                border-radius: 20px;
+                border-radius: 8px;
             }
         """)
 
@@ -237,12 +239,12 @@ class BatchManagementPage(QWidget):
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText(T("Search medicines..."))
         self.search_input.setFixedHeight(44)
-        self.search_input.textChanged.connect(self.refresh_table)
+        self.search_input.textChanged.connect(lambda: self.refresh_table(reset=True))
 
         self.category_filter = QComboBox()
         self.category_filter.setFixedHeight(44)
         self.category_filter.setFixedWidth(220)
-        self.category_filter.currentTextChanged.connect(self.refresh_table)
+        self.category_filter.currentTextChanged.connect(lambda: self.refresh_table(reset=True))
 
 
         self.expired_only_checkbox = QCheckBox(T("Expired Batches"))
@@ -254,7 +256,7 @@ class BatchManagementPage(QWidget):
                 border: 1px solid #e2eaf3;
                 border-radius: 12px;
                 padding: 0 16px;
-                color: #0f172a;
+                color: #18251f;
                 font-size: 14px;
             }
 
@@ -269,7 +271,7 @@ class BatchManagementPage(QWidget):
                 border: 1px solid #e2eaf3;
                 border-radius: 12px;
                 padding: 0 14px;
-                color: #0f172a;
+                color: #18251f;
                 font-size: 14px;
             }
 
@@ -288,7 +290,7 @@ class BatchManagementPage(QWidget):
                 background-color: white;
                 border: 1px solid #dbe5f2;
                 selection-background-color: #eef5ff;
-                selection-color: #0f172a;
+                selection-color: #18251f;
                 outline: none;
                 padding: 4px;
             }
@@ -331,6 +333,8 @@ class BatchManagementPage(QWidget):
         scroll.setStyleSheet(scroll_area_style())
 
         main_layout.addWidget(scroll)
+        self.pagination = PaginationBar(self.refresh_table, page_size=25)
+        main_layout.addWidget(self.pagination)
 
         self.setLayout(main_layout)
         self.setStyleSheet(page_root_style("batchManagementPage"))
@@ -351,7 +355,9 @@ class BatchManagementPage(QWidget):
         self.category_filter.setCurrentIndex(index if index >= 0 else 0)
         self.category_filter.blockSignals(False)
 
-    def refresh_table(self):
+    def refresh_table(self, *_args, reset=False):
+        if reset and hasattr(self, "pagination"):
+            self.pagination.reset()
         while self.table_layout.count():
             item = self.table_layout.takeAt(0)
             widget = item.widget()
@@ -363,7 +369,7 @@ class BatchManagementPage(QWidget):
             QFrame {
                 background-color: white;
                 border: 1px solid #e9f0f6;
-                border-radius: 20px;
+                border-radius: 8px;
             }
         """)
 
@@ -374,10 +380,11 @@ class BatchManagementPage(QWidget):
         header = self.make_header_row()
         layout.addWidget(header)
 
-        rows = get_batch_rows(
-            search_text=self.search_input.text(),
-            category=self.category_filter.currentData() or "",
-        )
+        search = self.search_input.text()
+        category = self.category_filter.currentData() or ""
+        total = get_batch_row_count(search, category)
+        self.pagination.set_total(total)
+        rows = get_batch_rows(search, category, self.pagination.page_size, self.pagination.offset)
 
         if self.expired_only_checkbox.isChecked():
             rows = [row for row in rows if row["expired"]]
@@ -477,7 +484,7 @@ class BatchManagementPage(QWidget):
                 expiry_color = "#f59e0b"
             else:
                 expiry_status = "Good"
-                expiry_color = "#22c55e"
+                expiry_color = "#147a61"
         except ValueError:
             expiry_status = "Invalid date"
             expiry_color = "#ef4444"
@@ -487,7 +494,7 @@ class BatchManagementPage(QWidget):
         row.setFixedHeight(78)
         row.setStyleSheet("""
             QFrame#batchRow {
-                border-top: 1px solid #edf2f7;
+                border-top: 1px solid #edf2ef;
                 background-color: white;
                 border-radius: 0px;
             }
@@ -502,7 +509,7 @@ class BatchManagementPage(QWidget):
         medicine = QLabel(row_data["name"])
         medicine.setStyleSheet("""
             QLabel {
-                color: #0f172a;
+                color: #18251f;
                 font-size: 14px;
                 font-weight: 700;
                 background: transparent;
@@ -520,7 +527,7 @@ class BatchManagementPage(QWidget):
         category.setStyleSheet("""
             QLabel {
                 background-color: #eef4ff;
-                color: #2563eb;
+                color: #147a61;
                 border: none;
                 border-radius: 8px;
                 padding: 0px 12px;
@@ -541,8 +548,8 @@ class BatchManagementPage(QWidget):
             }
         """)
 
-        stock_color = "#fef2f2" if row_data["expired"] or row_data["stock"] <= 0 else "#ecfdf5"
-        stock_text_color = "#dc2626" if row_data["expired"] or row_data["stock"] <= 0 else "#16a34a"
+        stock_color = "#fef2f2" if row_data["expired"] or row_data["stock"] <= 0 else "#eaf7f1"
+        stock_text_color = "#c84b4b" if row_data["expired"] or row_data["stock"] <= 0 else "#16a34a"
 
         stock = QLabel(TF("{count} units", count=row_data["stock"]))
         stock.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -572,7 +579,7 @@ class BatchManagementPage(QWidget):
         price.setAlignment(Qt.AlignmentFlag.AlignCenter)
         price.setStyleSheet("""
             QLabel {
-                color: #0f766e;
+                color: #147a61;
                 font-size: 13px;
                 font-weight: 700;
                 background: transparent;
@@ -600,7 +607,7 @@ class BatchManagementPage(QWidget):
         expiry_date.setAlignment(Qt.AlignmentFlag.AlignCenter)
         expiry_date.setStyleSheet("""
             QLabel {
-                color: #64748b;
+                color: #68776f;
                 font-size: 12px;
                 font-weight: 500;
                 background: transparent;
@@ -660,7 +667,7 @@ class BatchManagementPage(QWidget):
                 border-radius: 10px;
                 font-size: 12px;
                 font-weight: 700;
-                color: #0f172a;
+                color: #18251f;
                 padding: 0 12px;
             }
 
@@ -675,7 +682,7 @@ class BatchManagementPage(QWidget):
                 border-radius: 10px;
                 font-size: 12px;
                 font-weight: 700;
-                color: #dc2626;
+                color: #c84b4b;
                 padding: 0 12px;
             }
 

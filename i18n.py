@@ -2,7 +2,6 @@ from datetime import datetime
 import re
 
 from PyQt6.QtCore import QDate, QLocale, QSettings, Qt
-from PyQt6.QtWidgets import QInputDialog
 
 
 LANGUAGES = {"English": "en_GB", "Magyar": "hu_HU", "العربية": "ar_EG"}
@@ -11,6 +10,34 @@ _language = "en"
 # English source text | Hungarian | Arabic. Khalis Dawa is intentionally unchanged.
 _catalog = r"""
 Dashboard|Áttekintés|لوحة المعلومات
+WORKSPACE|MUNKATERÜLET|مساحة العمل
+INVENTORY|KÉSZLET|المخزون
+INSIGHTS|ELEMZÉSEK|التحليلات
+OK|Rendben|آمن
+FEFO inventory|FEFO-készletkezelés|مخزون وفق الأقرب انتهاءً
+Audit history|Naplóelőzmények|سجل التدقيق
+Local database|Helyi adatbázis|قاعدة بيانات محلية
+Pharmacy operations workspace|Gyógyszertári munkaterület|مساحة عمل عمليات الصيدلية
+Overview|Áttekintés|نظرة عامة
+My workspace|Munkaterületem|مساحة عملي
+A clear picture of pharmacy operations|A gyógyszertári működés áttekintése|صورة واضحة لعمليات الصيدلية
+Everything needed for today's shift|Minden, ami a mai műszakhoz szükséges|كل ما يلزم لوردية اليوم
+New sale|Új értékesítés|عملية بيع جديدة
+Review batches|Tételek áttekintése|مراجعة الدفعات
+View reports|Jelentések megtekintése|عرض التقارير
+View prescriptions|Receptek megtekintése|عرض الوصفات
+Sales history|Értékesítési előzmények|سجل المبيعات
+Recent transactions|Legutóbbi tranzakciók|أحدث المعاملات
+No recent transactions.|Nincsenek legutóbbi tranzakciók.|لا توجد معاملات حديثة.
+Sales Today|Mai értékesítések|مبيعات اليوم
+Prescriptions Today|Mai receptek|وصفات اليوم
+Returns Today|Mai visszáruk|مرتجعات اليوم
+A little help?|Segítségre van szüksége?|هل تحتاج إلى مساعدة؟
+Use search and filters to find records quickly.|A keresővel és a szűrőkkel gyorsan megtalálhatja a rekordokat.|استخدم البحث وعوامل التصفية للعثور على السجلات بسرعة.
+Previous|Előző|السابق
+Next|Következő|التالي
+Showing {first}-{last} of {total}|{first}-{last} / {total} megjelenítve|عرض {first}-{last} من {total}
+Page {page} of {pages}|{page}. / {pages} oldal|الصفحة {page} من {pages}
 Batch Management|Készletek tételenként|إدارة دفعات المخزون
 Purchasing|Beszerzés|المشتريات
 Receive supplier deliveries and keep their complete history|Szállítói áruátvétel és teljes beszerzési előzmény|استلام توريدات الموردين والاحتفاظ بسجلها الكامل
@@ -99,6 +126,15 @@ Administrator Mode|Rendszergazdai mód|وضع المسؤول
 Pharmacist Mode|Gyógyszerészi mód|وضع الصيدلي
 Log in|Bejelentkezés|تسجيل الدخول
 Use your Khalis Dawa account|Jelentkezzen be Khalis Dawa-fiókjába|سجّل الدخول بحسابك في Khalis Dawa
+Welcome back|Üdvözöljük újra|مرحبًا بعودتك
+A healthier way to run your pharmacy.|A gyógyszertár működtetésének egészségesebb módja.|طريقة أفضل لإدارة صيدليتك.
+Connected inventory. Confident dispensing. More time for the people who need you.|Összekapcsolt készlet. Magabiztos kiadás. Több idő azokra, akiknek szükségük van Önre.|مخزون مترابط، وصرف آمن، ووقت أطول لمن يحتاجون إليك.
+Secure pharmacy workspace|Biztonságos gyógyszertári munkatér|مساحة عمل آمنة للصيدلية
+Sign in to continue to your workspace|Jelentkezzen be a munkaterület folytatásához|سجّل الدخول للمتابعة إلى مساحة العمل
+Show password|Jelszó megjelenítése|إظهار كلمة المرور
+Hide password|Jelszó elrejtése|إخفاء كلمة المرور
+Language|Nyelv|اللغة
+Remembered on this device|Az eszköz megjegyzi|يتم تذكره على هذا الجهاز
 Staff-only access for administrators and pharmacists. Choose the account type above, then continue with your credentials.|Csak rendszergazdák és gyógyszerészek számára. Válassza ki a fióktípust, majd adja meg bejelentkezési adatait.|الدخول مخصص للمسؤولين والصيادلة. اختر نوع الحساب ثم أدخل بيانات تسجيل الدخول.
 Switch to Pharmacist mode to create a pharmacist account.|Gyógyszerészi fiók létrehozásához váltson gyógyszerészi módra.|انتقل إلى وضع الصيدلي لإنشاء حساب صيدلي.
 Username|Felhasználónév|اسم المستخدم
@@ -785,17 +821,13 @@ def force_ltr(widget, right=False):
     return widget
 
 
-def choose_language(app):
+def set_language(app, name):
+    """Apply and persist a language selected by its user-facing name."""
     global _language
     settings = QSettings("KhalisDawa", "Pharmacy")
     names = list(LANGUAGES)
-    saved = settings.value("language", "English")
-    default = names.index(saved) if saved in names else 0
-    name, ok = QInputDialog.getItem(
-        None, "Khalis Dawa", "Language / Nyelv / اللغة", names, default, False
-    )
-    if not ok:
-        return False
+    if name not in names:
+        name = "English"
     settings.setValue("language", name)
     locale_value = QLocale(LANGUAGES[name])
     _language = LANGUAGES[name][:2]
@@ -804,4 +836,21 @@ def choose_language(app):
         Qt.LayoutDirection.RightToLeft if _language == "ar"
         else Qt.LayoutDirection.LeftToRight
     )
+    return name
+
+
+def language_name():
+    code = f"{_language}_"
+    return next((name for name, locale_name in LANGUAGES.items() if locale_name.startswith(code)), "English")
+
+
+def initialize_language(app):
+    """Restore the saved language without interrupting application startup."""
+    saved = QSettings("KhalisDawa", "Pharmacy").value("language", "English")
+    return set_language(app, saved)
+
+
+def choose_language(app):
+    """Backward-compatible alias retained for older callers."""
+    initialize_language(app)
     return True

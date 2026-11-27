@@ -45,9 +45,19 @@ def bind(c, reason):
         reason=inv_reason() WHERE id=NEW.id; END""")
 
 
-def history(c, search):
+def history(c, search, limit=None, offset=0):
     rows = []
-    for r in c.execute("SELECT * FROM inventory_events"):
+    query = "SELECT * FROM inventory_events"
+    params = []
+    normalized = f"%{str(search or '').casefold()}%"
+    if search:
+        query += " WHERE LOWER(actor) LIKE ? OR LOWER(role) LIKE ? OR LOWER(reason) LIKE ? OR LOWER(COALESCE(old_state,'')) LIKE ? OR LOWER(COALESCE(new_state,'')) LIKE ?"
+        params = [normalized] * 5
+    query += " ORDER BY created_at DESC"
+    if limit is not None:
+        query += " LIMIT ? OFFSET ?"
+        params.extend((max(0, int(limit)), max(0, int(offset))))
+    for r in c.execute(query, params):
         old = json.loads(r["old_state"] or "{}")
         new = json.loads(r["new_state"] or "{}")
         item = new or old
@@ -62,3 +72,14 @@ def history(c, search):
         rows.append(dict(id=r["id"], username=r["actor"], role=r["role"],
                          description=summary, created_at=r["created_at"], details=details))
     return rows
+
+
+def history_count(c, search=""):
+    if not search:
+        return int(c.execute("SELECT COUNT(*) FROM inventory_events").fetchone()[0])
+    normalized = f"%{str(search).casefold()}%"
+    return int(c.execute("""
+        SELECT COUNT(*) FROM inventory_events
+        WHERE LOWER(actor) LIKE ? OR LOWER(role) LIKE ? OR LOWER(reason) LIKE ?
+           OR LOWER(COALESCE(old_state,'')) LIKE ? OR LOWER(COALESCE(new_state,'')) LIKE ?
+    """, [normalized] * 5).fetchone()[0])

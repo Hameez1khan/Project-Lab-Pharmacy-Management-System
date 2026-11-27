@@ -88,8 +88,27 @@ def is_valid_customer_ssn(ssn):
     return len(normalize_customer_ssn(ssn)) == 9
 
 
-def format_receipt_number(record_id):
+def format_receipt_number(record_id, transaction_date=None, prefix="KD"):
+    """Return a stable business identifier while preserving legacy callers.
+
+    Existing relationships continue to use integer primary keys.  Screens that
+    have a transaction date receive a readable KD-YYYYMMDD-00001 identifier;
+    older call sites without a date retain the legacy number.
+    """
+    if transaction_date:
+        compact_date = str(transaction_date).strip()[:10].replace("-", "")
+        if len(compact_date) == 8 and compact_date.isdigit():
+            return f"{prefix}-{compact_date}-{int(record_id):05d}"
     return f"#{int(record_id):05d}"
+
+
+def parse_receipt_search(value):
+    """Accept a database id, legacy #00001, or KD-YYYYMMDD-00001."""
+    normalized = str(value or "").strip().replace("#", "")
+    if not normalized:
+        return None
+    tail = normalized.rsplit("-", 1)[-1]
+    return int(tail) if tail.isdigit() else None
 
 
 def get_dashboard_sales_trend(days=30):
@@ -500,6 +519,26 @@ def initialize_database():
         ON purchase_receipts(purchase_order_id)
     """)
 
+    # Keep common list, search, dashboard, and FEFO queries responsive as the
+    # operational history grows. These indexes are safe to create repeatedly.
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS idx_products_name ON products(name)",
+        "CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)",
+        "CREATE INDEX IF NOT EXISTS idx_batches_product_expiry ON batches(product_id, expiry_date)",
+        "CREATE INDEX IF NOT EXISTS idx_batches_expiry_quantity ON batches(expiry_date, quantity)",
+        "CREATE INDEX IF NOT EXISTS idx_sales_datetime ON sales(sale_datetime)",
+        "CREATE INDEX IF NOT EXISTS idx_sale_items_sale ON sale_items(sale_id)",
+        "CREATE INDEX IF NOT EXISTS idx_sale_items_product ON sale_items(product_id)",
+        "CREATE INDEX IF NOT EXISTS idx_sale_allocations_item ON sale_batch_allocations(sale_item_id)",
+        "CREATE INDEX IF NOT EXISTS idx_prescriptions_created ON prescriptions(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_prescriptions_sale ON prescriptions(sale_id)",
+        "CREATE INDEX IF NOT EXISTS idx_returns_datetime ON returns(return_datetime)",
+        "CREATE INDEX IF NOT EXISTS idx_returns_sale ON returns(sale_id)",
+        "CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_logs(username)",
+    ):
+        cursor.execute(statement)
+
     cursor.execute("""
         INSERT OR IGNORE INTO users (username, password, role)
         VALUES ('admin', ?, 'admin')
@@ -685,13 +724,13 @@ def add_audit_log(username, description, role=None, conn=None, cursor=None):
         conn.close()
 
 
-def get_audit_log_rows(search_text=""):
+def get_audit_log_rows(search_text="", limit=None, offset=0):
     conn = get_connection()
     cursor = conn.cursor()
 
     normalized = f"%{search_text.strip().lower()}%"
 
-    cursor.execute("""
+    query = """
         SELECT
             id,
             username,
@@ -703,7 +742,12 @@ def get_audit_log_rows(search_text=""):
            OR LOWER(COALESCE(role, '')) LIKE ?
            OR LOWER(description) LIKE ?
         ORDER BY id DESC
-    """, (normalized, normalized, normalized))
+    """
+    params = [normalized, normalized, normalized]
+    if limit is not None:
+        query += " LIMIT ?"
+        params.append(max(0, int(limit)) + max(0, int(offset)))
+    cursor.execute(query, params)
 
     rows = []
     for row in cursor.fetchall():
@@ -715,9 +759,26 @@ def get_audit_log_rows(search_text=""):
             "created_at": row["created_at"] or "",
         })
 
-    rows.extend(inventory_audit.history(conn, search_text.strip()))
+    history_limit = None if limit is None else max(0, int(limit)) + max(0, int(offset))
+    rows.extend(inventory_audit.history(conn, search_text.strip(), history_limit, 0))
     conn.close()
-    return sorted(rows, key=lambda row: row["created_at"], reverse=True)
+    rows = sorted(rows, key=lambda row: row["created_at"], reverse=True)
+    if limit is not None:
+        start = max(0, int(offset))
+        return rows[start:start + max(0, int(limit))]
+    return rows
+
+
+def get_audit_log_count(search_text=""):
+    conn = get_connection()
+    normalized = f"%{search_text.strip().lower()}%"
+    total = conn.execute("""
+        SELECT COUNT(*) AS total FROM audit_logs
+        WHERE LOWER(username) LIKE ? OR LOWER(COALESCE(role, '')) LIKE ? OR LOWER(description) LIKE ?
+    """, (normalized, normalized, normalized)).fetchone()["total"]
+    total += inventory_audit.history_count(conn, search_text.strip())
+    conn.close()
+    return int(total)
 
 
 def get_product_by_name(name):
@@ -1619,13 +1680,13 @@ def get_categories():
     conn.close()
     return rows
 
-def get_product_rows(search_text="", category="All Categories"):
+def get_product_rows(search_text="", category="All Categories", limit=None, offset=0):
     conn = get_connection()
     cursor = conn.cursor()
 
     search_value = f"%{search_text.strip().lower()}%"
 
-    cursor.execute("""
+    query = """
         SELECT
             p.id,
             p.name,
@@ -1658,7 +1719,12 @@ def get_product_rows(search_text="", category="All Categories"):
             p.prescription_required
 
         ORDER BY LOWER(p.name)
-    """, (search_value, category, category))
+    """
+    params = [search_value, category, category]
+    if limit is not None:
+        query += " LIMIT ? OFFSET ?"
+        params.extend((max(0, int(limit)), max(0, int(offset))))
+    cursor.execute(query, params)
 
     rows = []
     for row in cursor.fetchall():
@@ -1677,6 +1743,17 @@ def get_product_rows(search_text="", category="All Categories"):
 
     conn.close()
     return rows
+
+
+def get_product_row_count(search_text="", category="All Categories"):
+    conn = get_connection()
+    search_value = f"%{search_text.strip().lower()}%"
+    total = conn.execute("""
+        SELECT COUNT(*) AS total FROM products p
+        WHERE LOWER(p.name) LIKE ? AND (? = 'All Categories' OR p.category = ?)
+    """, (search_value, category, category)).fetchone()["total"]
+    conn.close()
+    return int(total)
 
 
 def add_product_record(
@@ -1924,13 +2001,13 @@ def get_products_for_pos(search_text="", category="All Categories"):
     return products
 
 
-def get_prescription_rows(search_text=""):
+def get_prescription_rows(search_text="", limit=None, offset=0):
     conn = get_connection()
     cursor = conn.cursor()
 
     if search_text.strip():
         search_value = f"%{search_text.strip().lower()}%"
-        cursor.execute("""
+        query = """
             SELECT
                 id,
                 customer_ssn,
@@ -1943,9 +2020,10 @@ def get_prescription_rows(search_text=""):
                OR LOWER(customer_name) LIKE ?
                OR LOWER(medicine_name) LIKE ?
             ORDER BY id DESC
-        """, (search_value, search_value, search_value))
+        """
+        params = [search_value, search_value, search_value]
     else:
-        cursor.execute("""
+        query = """
             SELECT
                 id,
                 customer_ssn,
@@ -1955,7 +2033,12 @@ def get_prescription_rows(search_text=""):
                 created_at
             FROM prescriptions
             ORDER BY id DESC
-        """)
+        """
+        params = []
+    if limit is not None:
+        query += " LIMIT ? OFFSET ?"
+        params.extend((max(0, int(limit)), max(0, int(offset))))
+    cursor.execute(query, params)
 
     rows = []
     for row in cursor.fetchall():
@@ -1970,6 +2053,17 @@ def get_prescription_rows(search_text=""):
 
     conn.close()
     return rows
+
+
+def get_prescription_row_count(search_text=""):
+    conn = get_connection()
+    search_value = f"%{search_text.strip().lower()}%"
+    total = conn.execute("""
+        SELECT COUNT(*) AS total FROM prescriptions
+        WHERE LOWER(customer_ssn) LIKE ? OR LOWER(customer_name) LIKE ? OR LOWER(medicine_name) LIKE ?
+    """, (search_value, search_value, search_value)).fetchone()["total"]
+    conn.close()
+    return int(total)
 
 
 
@@ -2130,7 +2224,7 @@ def _build_sale_return_context(cursor, sale_id):
 
     return {
         "sale_id": sale["id"],
-        "receipt_number": format_receipt_number(sale["id"]),
+        "receipt_number": format_receipt_number(sale["id"], sale["sale_datetime"]),
         "sale_datetime": sale["sale_datetime"],
         "return_deadline": return_deadline.strftime("%Y-%m-%d %H:%M"),
         "return_window_open": datetime.now() <= return_deadline,
@@ -2475,13 +2569,13 @@ def delete_return_record(return_id, acting_username=None, acting_role=None):
     return True, "Return deleted successfully."
 
 
-def get_batch_rows(search_text="", category="All Categories"):
+def get_batch_rows(search_text="", category="All Categories", limit=None, offset=0):
     conn = get_connection()
     cursor = conn.cursor()
 
     search_value = f"%{search_text.strip().lower()}%"
 
-    cursor.execute("""
+    query = """
         SELECT
             b.id AS batch_id,
             p.id AS product_id,
@@ -2502,7 +2596,12 @@ def get_batch_rows(search_text="", category="All Categories"):
         WHERE LOWER(p.name) LIKE ?
           AND (? = 'All Categories' OR p.category = ?)
         ORDER BY LOWER(p.name), date(b.expiry_date), b.batch_number
-    """, (search_value, category, category))
+    """
+    params = [search_value, category, category]
+    if limit is not None:
+        query += " LIMIT ? OFFSET ?"
+        params.extend((max(0, int(limit)), max(0, int(offset))))
+    cursor.execute(query, params)
 
     rows = []
     for row in cursor.fetchall():
@@ -2522,6 +2621,17 @@ def get_batch_rows(search_text="", category="All Categories"):
 
     conn.close()
     return rows
+
+
+def get_batch_row_count(search_text="", category="All Categories"):
+    conn = get_connection()
+    search_value = f"%{search_text.strip().lower()}%"
+    total = conn.execute("""
+        SELECT COUNT(*) AS total FROM batches b JOIN products p ON p.id=b.product_id
+        WHERE LOWER(p.name) LIKE ? AND (? = 'All Categories' OR p.category = ?)
+    """, (search_value, category, category)).fetchone()["total"]
+    conn.close()
+    return int(total)
 
 
 def get_fefo_allocations(product_id, requested_quantity, conn=None):
@@ -2964,7 +3074,8 @@ def get_recent_sales():
         SELECT
             id,
             total_amount,
-            sale_datetime
+            sale_datetime,
+            payment_method
         FROM sales
         ORDER BY id DESC
         LIMIT 5
@@ -2972,28 +3083,31 @@ def get_recent_sales():
 
     rows = []
     for row in cursor.fetchall():
-        rows.append((
-            row["id"],
-            format_receipt_number(row["id"]),
-            row["total_amount"],
-        ))
+        rows.append({
+            "id": row["id"],
+            "receipt_number": format_receipt_number(row["id"], row["sale_datetime"]),
+            "total_amount": float(row["total_amount"] or 0),
+            "sale_datetime": row["sale_datetime"],
+            "payment_method": row["payment_method"] or "Cash",
+        })
 
     conn.close()
     return rows
 
 
-def get_sales_history(search_text=""):
+def get_sales_history(search_text="", limit=None, offset=0):
     conn = get_connection()
     cursor = conn.cursor()
 
-    search_text = search_text.strip().replace("#", "")
+    search_text = search_text.strip()
 
     if search_text:
-        if not search_text.isdigit():
+        numeric_receipt = parse_receipt_search(search_text)
+        if numeric_receipt is None:
             conn.close()
             return []
 
-        cursor.execute("""
+        query = """
             SELECT
                 s.id,
                 s.sale_datetime,
@@ -3005,10 +3119,11 @@ def get_sales_history(search_text=""):
             WHERE s.id = ?
             GROUP BY s.id, s.sale_datetime, s.total_amount, s.payment_method
             ORDER BY s.id DESC
-        """, (int(search_text),))
+        """
+        params = [numeric_receipt]
 
     else:
-        cursor.execute("""
+        query = """
             SELECT
                 s.id,
                 s.sale_datetime,
@@ -3019,7 +3134,13 @@ def get_sales_history(search_text=""):
             LEFT JOIN sale_items si ON si.sale_id = s.id
             GROUP BY s.id, s.sale_datetime, s.total_amount, s.payment_method
             ORDER BY s.id DESC
-        """)
+        """
+        params = []
+
+    if limit is not None:
+        query += " LIMIT ? OFFSET ?"
+        params.extend((max(0, int(limit)), max(0, int(offset))))
+    cursor.execute(query, params)
 
 
     rows = []
@@ -3030,7 +3151,7 @@ def get_sales_history(search_text=""):
             "date": row["sale_datetime"],
             "total": row["total_amount"],
             "payment_method": row["payment_method"] or "N/A",
-            "receipt_number": format_receipt_number(row["id"]),
+            "receipt_number": format_receipt_number(row["id"], row["sale_datetime"]),
         })
 
 
@@ -3038,67 +3159,98 @@ def get_sales_history(search_text=""):
     return rows
 
 
-def get_returns_history(search_text=""):
+def get_sales_history_count(search_text=""):
+    conn = get_connection()
+    if search_text.strip():
+        receipt_id = parse_receipt_search(search_text)
+        total = 0 if receipt_id is None else conn.execute(
+            "SELECT COUNT(*) AS total FROM sales WHERE id=?", (receipt_id,)
+        ).fetchone()["total"]
+    else:
+        total = conn.execute("SELECT COUNT(*) AS total FROM sales").fetchone()["total"]
+    conn.close()
+    return int(total)
+
+
+def get_returns_history(search_text="", limit=None, offset=0):
     conn = get_connection()
     cursor = conn.cursor()
 
     normalized_search = search_text.strip().lower().replace("#", "")
+    numeric_search = parse_receipt_search(search_text)
 
     base_query = """
         SELECT
             r.id,
             r.sale_id,
             r.return_datetime,
+            s.sale_datetime,
             r.total_amount,
             r.processed_by_username,
             COALESCE(SUM(ri.quantity), 0) AS total_items
         FROM returns r
+        JOIN sales s ON s.id = r.sale_id
         LEFT JOIN return_items ri ON ri.return_id = r.id
     """
 
     if normalized_search:
-        if normalized_search.isdigit():
-            numeric_value = int(normalized_search)
-            cursor.execute(base_query + """
+        if numeric_search is not None:
+            numeric_value = numeric_search
+            query = base_query + """
                 WHERE r.id = ?
                    OR r.sale_id = ?
                 GROUP BY
                     r.id,
                     r.sale_id,
                     r.return_datetime,
+                    s.sale_datetime,
                     r.total_amount,
                     r.processed_by_username
                 ORDER BY r.id DESC
-            """, (numeric_value, numeric_value))
+            """
+            params = [numeric_value, numeric_value]
         else:
-            cursor.execute(base_query + """
+            query = base_query + """
                 WHERE LOWER(COALESCE(r.processed_by_username, '')) LIKE ?
                 GROUP BY
                     r.id,
                     r.sale_id,
                     r.return_datetime,
+                    s.sale_datetime,
                     r.total_amount,
                     r.processed_by_username
                 ORDER BY r.id DESC
-            """, (f"%{normalized_search}%",))
+            """
+            params = [f"%{normalized_search}%"]
     else:
-        cursor.execute(base_query + """
+        query = base_query + """
             GROUP BY
                 r.id,
                 r.sale_id,
                 r.return_datetime,
+                s.sale_datetime,
                 r.total_amount,
                 r.processed_by_username
             ORDER BY r.id DESC
-        """)
+        """
+        params = []
+
+    if limit is not None:
+        query += " LIMIT ? OFFSET ?"
+        params.extend((max(0, int(limit)), max(0, int(offset))))
+    cursor.execute(query, params)
 
     rows = []
     for row in cursor.fetchall():
         rows.append({
             "id": row["id"],
-            "return_receipt_number": format_receipt_number(row["id"]),
+            "return_receipt_number": format_receipt_number(
+                row["id"], row["return_datetime"], prefix="RT"
+            ),
             "source_sale_id": row["sale_id"],
-            "source_receipt_number": format_receipt_number(row["sale_id"]),
+            "source_receipt_number": format_receipt_number(
+                row["sale_id"], row["sale_datetime"]
+            ),
             "date": row["return_datetime"] or "",
             "refund_amount": float(row["total_amount"] or 0),
             "total_items": int(row["total_items"] or 0),
@@ -3107,6 +3259,25 @@ def get_returns_history(search_text=""):
 
     conn.close()
     return rows
+
+
+def get_returns_history_count(search_text=""):
+    conn = get_connection()
+    normalized = search_text.strip().lower().replace("#", "")
+    numeric = parse_receipt_search(search_text)
+    if not normalized:
+        total = conn.execute("SELECT COUNT(*) AS total FROM returns").fetchone()["total"]
+    elif numeric is not None:
+        total = conn.execute(
+            "SELECT COUNT(*) AS total FROM returns WHERE id=? OR sale_id=?", (numeric, numeric)
+        ).fetchone()["total"]
+    else:
+        total = conn.execute("""
+            SELECT COUNT(*) AS total FROM returns
+            WHERE LOWER(COALESCE(processed_by_username,'')) LIKE ?
+        """, (f"%{normalized}%",)).fetchone()["total"]
+    conn.close()
+    return int(total)
 
 def get_sale_receipt_data(sale_id):
     conn = get_connection()
@@ -3144,7 +3315,7 @@ def get_sale_receipt_data(sale_id):
 
     return {
         "sale_id": sale["id"],
-        "receipt_number": format_receipt_number(sale["id"]),
+        "receipt_number": format_receipt_number(sale["id"], sale["sale_datetime"]),
         "date": sale["sale_datetime"],
         "total": sale["total_amount"],
         "payment_method": sale["payment_method"] or "N/A",
@@ -3200,9 +3371,13 @@ def get_return_report_data(return_id):
 
     return {
         "return_id": returned_sale["id"],
-        "return_receipt_number": format_receipt_number(returned_sale["id"]),
+        "return_receipt_number": format_receipt_number(
+            returned_sale["id"], returned_sale["return_datetime"], prefix="RT"
+        ),
         "source_sale_id": returned_sale["sale_id"],
-        "source_receipt_number": format_receipt_number(returned_sale["sale_id"]),
+        "source_receipt_number": format_receipt_number(
+            returned_sale["sale_id"], returned_sale["sale_datetime"]
+        ),
         "return_date": returned_sale["return_datetime"],
         "source_sale_date": returned_sale["sale_datetime"],
         "refund_total": float(returned_sale["total_amount"] or 0),

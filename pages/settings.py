@@ -84,7 +84,7 @@ class SettingsPage(QWidget):
         lock_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lock_icon.setStyleSheet("""
             QLabel {
-                color: #22c55e;
+                color: #147a61;
                 font-size: 20px;
                 font-weight: 700;
                 border: none;
@@ -96,7 +96,7 @@ class SettingsPage(QWidget):
             QLabel {
                 font-size: 17px;
                 font-weight: 700;
-                color: #111827;
+                color: #18251f;
                 border: none;
             }
         """)
@@ -133,7 +133,7 @@ class SettingsPage(QWidget):
             QLabel {
                 font-size: 14px;
                 font-weight: 600;
-                color: #111827;
+                color: #18251f;
                 border: none;
             }
         """)
@@ -217,7 +217,7 @@ class SettingsPage(QWidget):
             QLabel {
                 font-size: 14px;
                 font-weight: 700;
-                color: #111827;
+                color: #18251f;
                 border: none;
             }
         """)
@@ -248,7 +248,7 @@ class SettingsPage(QWidget):
             QLineEdit {
                 border: none;
                 background-color: transparent;
-                color: #111827;
+                color: #18251f;
                 font-size: 14px;
                 padding: 0;
             }

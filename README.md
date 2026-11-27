@@ -104,6 +104,24 @@ Normal use only requires:
 python main.py
 ```
 
+## Optional Demonstration Database
+
+Developers and reviewers can generate a separate, realistic demonstration database. It does not replace or add records to the normal pharmacy database.
+
+```powershell
+python scripts\data_tools\generate_demo_database.py --force
+powershell -ExecutionPolicy Bypass -File scripts\run_demo.ps1
+```
+
+The generator is repeatable and supports custom sizes. Run `python scripts\data_tools\generate_demo_database.py --help` to see the options.
+
+Demo-only accounts:
+
+- **Administrator:** `demo_admin` / `DemoAdmin2026!`
+- **Pharmacist:** `nora.pharmacist` / `DemoPharma2026!`
+
+Every generated audit entry is marked as simulated data. The demonstration database is ignored by Git.
+
 ## Project Files
 
 ```text

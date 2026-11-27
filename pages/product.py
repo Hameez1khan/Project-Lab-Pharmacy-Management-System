@@ -23,10 +23,12 @@ from database.db import (
     add_product_record,
     delete_product_record,
     get_categories,
+    get_product_row_count,
     get_product_rows,
     update_product_record,
 )
 from i18n import T, TF, force_ltr, format_money
+from ui_components import PaginationBar
 from ui_theme import (
     PRIMARY,
     BLUE,
@@ -153,7 +155,7 @@ class ProductPage(QWidget):
         title = QLabel(T("Products"))
         title.setStyleSheet("""
             QLabel {
-                color: #0f172a;
+                color: #18251f;
                 font-size: 22px;
                 font-weight: 800;
                 background: transparent;
@@ -164,7 +166,7 @@ class ProductPage(QWidget):
         subtitle = QLabel(T("View and manage product records"))
         subtitle.setStyleSheet("""
             QLabel {
-                color: #64748b;
+                color: #68776f;
                 font-size: 13px;
                 background: transparent;
                 border: none;
@@ -184,7 +186,7 @@ class ProductPage(QWidget):
             add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             add_btn.setStyleSheet("""
                 QPushButton {
-                    background-color: #22c55e;
+                    background-color: #147a61;
                     color: white;
                     border: none;
                     border-radius: 12px;
@@ -206,7 +208,7 @@ class ProductPage(QWidget):
             QFrame {
                 background-color: white;
                 border: 1px solid #e9f0f6;
-                border-radius: 20px;
+                border-radius: 8px;
             }
         """)
 
@@ -218,12 +220,12 @@ class ProductPage(QWidget):
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText(T("Search products..."))
         self.search_input.setFixedHeight(44)
-        self.search_input.textChanged.connect(self.refresh_table)
+        self.search_input.textChanged.connect(lambda: self.refresh_table(reset=True))
 
         self.category_filter = QComboBox()
         self.category_filter.setFixedHeight(44)
         self.category_filter.setFixedWidth(340)
-        self.category_filter.currentTextChanged.connect(self.refresh_table)
+        self.category_filter.currentTextChanged.connect(lambda: self.refresh_table(reset=True))
 
         self.search_input.setStyleSheet("""
             QLineEdit {
@@ -231,7 +233,7 @@ class ProductPage(QWidget):
                 border: 1px solid #e2eaf3;
                 border-radius: 12px;
                 padding: 0 16px;
-                color: #0f172a;
+                color: #18251f;
                 font-size: 14px;
             }
 
@@ -246,7 +248,7 @@ class ProductPage(QWidget):
                 border: 1px solid #e2eaf3;
                 border-radius: 12px;
                 padding: 0 14px;
-                color: #0f172a;
+                color: #18251f;
                 font-size: 14px;
             }
 
@@ -265,7 +267,7 @@ class ProductPage(QWidget):
                 background-color: white;
                 border: 1px solid #dbe5f2;
                 selection-background-color: #eef5ff;
-                selection-color: #0f172a;
+                selection-color: #18251f;
                 outline: none;
                 padding: 4px;
             }
@@ -297,6 +299,8 @@ class ProductPage(QWidget):
         scroll.setStyleSheet(scroll_area_style())
 
         main_layout.addWidget(scroll)
+        self.pagination = PaginationBar(self.refresh_table, page_size=25)
+        main_layout.addWidget(self.pagination)
 
         self.setLayout(main_layout)
         self.setStyleSheet(page_root_style("productPage"))
@@ -317,7 +321,9 @@ class ProductPage(QWidget):
         self.category_filter.setCurrentIndex(index if index >= 0 else 0)
         self.category_filter.blockSignals(False)
 
-    def refresh_table(self):
+    def refresh_table(self, *_args, reset=False):
+        if reset and hasattr(self, "pagination"):
+            self.pagination.reset()
         while self.table_layout.count():
             item = self.table_layout.takeAt(0)
             widget = item.widget()
@@ -329,7 +335,7 @@ class ProductPage(QWidget):
             QFrame {
                 background-color: white;
                 border: 1px solid #e9f0f6;
-                border-radius: 20px;
+                border-radius: 8px;
             }
         """)
 
@@ -339,10 +345,11 @@ class ProductPage(QWidget):
 
         layout.addWidget(self.make_header_row())
 
-        rows = get_product_rows(
-            search_text=self.search_input.text(),
-            category=self.category_filter.currentData() or "",
-        )
+        search = self.search_input.text()
+        category = self.category_filter.currentData() or ""
+        total = get_product_row_count(search, category)
+        self.pagination.set_total(total)
+        rows = get_product_rows(search, category, self.pagination.page_size, self.pagination.offset)
 
         if not rows:
             empty = QLabel(T("No products found"))
@@ -407,7 +414,7 @@ class ProductPage(QWidget):
         row.setFixedHeight(82)
         row.setStyleSheet("""
             QFrame#productRow {
-                border-top: 1px solid #edf2f7;
+                border-top: 1px solid #edf2ef;
                 background-color: white;
                 border-radius: 0px;
             }
@@ -423,7 +430,7 @@ class ProductPage(QWidget):
         name = QLabel(row_data["name"])
         name.setStyleSheet("""
             QLabel {
-                color: #0f172a;
+                color: #18251f;
                 font-size: 14px;
                 font-weight: 700;
                 background: transparent;
@@ -455,7 +462,7 @@ class ProductPage(QWidget):
         price = force_ltr(QLabel(format_money(row_data["selling_price"], 0)), right=True)
         price.setStyleSheet("""
             QLabel {
-                color: #0f766e;
+                color: #147a61;
                 font-size: 13px;
                 font-weight: 700;
                 background: transparent;
@@ -481,7 +488,7 @@ class ProductPage(QWidget):
         category.setStyleSheet("""
             QLabel {
                 background-color: #eef4ff;
-                color: #2563eb;
+                color: #147a61;
                 border-radius: 14px;
                 padding: 6px 12px;
                 font-size: 11px;
@@ -496,8 +503,8 @@ class ProductPage(QWidget):
         prescription.setMinimumHeight(26)
         prescription.setStyleSheet(f"""
             QLabel {{
-                background-color: {'#fff1f2' if row_data['prescription_required'] else '#ecfdf5'};
-                color: {'#dc2626' if row_data['prescription_required'] else '#16a34a'};
+                background-color: {'#fff0f0' if row_data['prescription_required'] else '#eaf7f1'};
+                color: {'#c84b4b' if row_data['prescription_required'] else '#16a34a'};
                 border-radius: 14px;
                 padding: 6px 12px;
                 font-size: 11px;
@@ -506,8 +513,8 @@ class ProductPage(QWidget):
             }}
         """)
 
-        available_color = "#dc2626" if row_data["available_stock"] <= 0 else "#16a34a"
-        available_bg = "#fff1f2" if row_data["available_stock"] <= 0 else "#ecfdf5"
+        available_color = "#c84b4b" if row_data["available_stock"] <= 0 else "#16a34a"
+        available_bg = "#fff0f0" if row_data["available_stock"] <= 0 else "#eaf7f1"
         available_stock = QLabel(TF("{count} units", count=row_data["available_stock"]))
         available_stock.setAlignment(Qt.AlignmentFlag.AlignCenter)
         available_stock.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -553,7 +560,7 @@ class ProductPage(QWidget):
                     border-radius: 10px;
                     font-size: 12px;
                     font-weight: 700;
-                    color: #0f172a;
+                    color: #18251f;
                     padding: 0 12px;
                 }
 
@@ -568,7 +575,7 @@ class ProductPage(QWidget):
                     border-radius: 10px;
                     font-size: 12px;
                     font-weight: 700;
-                    color: #dc2626;
+                    color: #c84b4b;
                     padding: 0 12px;
                 }
 

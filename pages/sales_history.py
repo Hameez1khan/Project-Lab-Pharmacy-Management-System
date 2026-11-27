@@ -20,9 +20,11 @@ from database.db import (
     get_sale_receipt_data,
     get_sale_return_candidates,
     get_sales_history,
+    get_sales_history_count,
     process_sale_return,
 )
 from i18n import T, TF, force_ltr, format_date, format_money, is_rtl, language
+from ui_components import PaginationBar
 from ui_theme import (
     BLUE,
     PRIMARY,
@@ -61,7 +63,7 @@ class ReturnItemsDialog(QDialog):
         title = QLabel(TF("Return items from {receipt}", receipt=sale_context["receipt_number"]))
         title.setStyleSheet("""
             QLabel {
-                color: #111827;
+                color: #18251f;
                 font-size: 18px;
                 font-weight: 800;
             }
@@ -100,7 +102,7 @@ class ReturnItemsDialog(QDialog):
             name = QLabel(item["product_name"])
             name.setStyleSheet("""
                 QLabel {
-                    color: #111827;
+                    color: #18251f;
                     font-size: 15px;
                     font-weight: 700;
                 }
@@ -142,7 +144,7 @@ class ReturnItemsDialog(QDialog):
             controls.addStretch()
 
             quantity_label = QLabel(T("Return quantity"))
-            quantity_label.setStyleSheet("color: #111827; font-size: 13px; font-weight: 600;")
+            quantity_label.setStyleSheet("color: #18251f; font-size: 13px; font-weight: 600;")
 
             quantity_input = QSpinBox()
             quantity_input.setRange(0, item["returnable_quantity"])
@@ -157,7 +159,7 @@ class ReturnItemsDialog(QDialog):
                     border-radius: 8px;
                     padding: 0 10px;
                     font-size: 13px;
-                    color: #111827;
+                    color: #18251f;
                 }
 
                 QSpinBox:disabled {
@@ -189,7 +191,7 @@ class ReturnItemsDialog(QDialog):
 
         confirm_btn.setStyleSheet("""
             QPushButton {
-                background-color: #2563eb;
+                background-color: #147a61;
                 color: white;
                 border: none;
                 border-radius: 8px;
@@ -198,7 +200,7 @@ class ReturnItemsDialog(QDialog):
             }
 
             QPushButton:hover {
-                background-color: #1d4ed8;
+                background-color: #0f654f;
             }
         """)
 
@@ -240,7 +242,7 @@ class SalesHistoryPage(QWidget):
         title = QLabel(T("Sales History"))
         title.setStyleSheet("""
             QLabel {
-                color: #0f172a;
+                color: #18251f;
                 font-size: 22px;
                 font-weight: 800;
                 background: transparent;
@@ -251,7 +253,7 @@ class SalesHistoryPage(QWidget):
         subtitle = QLabel(T("View all completed sales"))
         subtitle.setStyleSheet("""
             QLabel {
-                color: #64748b;
+                color: #68776f;
                 font-size: 13px;
                 background: transparent;
                 border: none;
@@ -267,7 +269,7 @@ class SalesHistoryPage(QWidget):
             QFrame {
                 background-color: white;
                 border: 1px solid #e9f0f6;
-                border-radius: 20px;
+                border-radius: 8px;
             }
         """)
 
@@ -279,14 +281,14 @@ class SalesHistoryPage(QWidget):
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText(T("Search by receipt ID..."))
         self.search_input.setFixedHeight(44)
-        self.search_input.textChanged.connect(self.refresh_table)
+        self.search_input.textChanged.connect(lambda: self.refresh_table(reset=True))
         self.search_input.setStyleSheet("""
             QLineEdit {
                 background-color: #fbfdff;
                 border: 1px solid #e2eaf3;
                 border-radius: 12px;
                 padding: 0 16px;
-                color: #0f172a;
+                color: #18251f;
                 font-size: 14px;
             }
 
@@ -315,13 +317,17 @@ class SalesHistoryPage(QWidget):
         scroll.setStyleSheet(scroll_area_style())
 
         main_layout.addWidget(scroll)
+        self.pagination = PaginationBar(self.refresh_table, page_size=25)
+        main_layout.addWidget(self.pagination)
         self.setLayout(main_layout)
 
         self.setStyleSheet(page_root_style("salesHistoryPage"))
 
         self.refresh_table()
 
-    def refresh_table(self):
+    def refresh_table(self, *_args, reset=False):
+        if reset and hasattr(self, "pagination"):
+            self.pagination.reset()
         while self.table_layout.count():
             item = self.table_layout.takeAt(0)
             widget = item.widget()
@@ -333,7 +339,7 @@ class SalesHistoryPage(QWidget):
             QFrame {
                 background-color: white;
                 border: 1px solid #e9f0f6;
-                border-radius: 20px;
+                border-radius: 8px;
             }
         """)
 
@@ -343,7 +349,9 @@ class SalesHistoryPage(QWidget):
 
         layout.addWidget(self.make_header_row())
 
-        rows = get_sales_history(self.search_input.text())
+        search = self.search_input.text()
+        self.pagination.set_total(get_sales_history_count(search))
+        rows = get_sales_history(search, self.pagination.page_size, self.pagination.offset)
 
         if not rows:
             empty = QLabel(T("No sales found"))
@@ -351,7 +359,7 @@ class SalesHistoryPage(QWidget):
             empty.setMinimumHeight(180)
             empty.setStyleSheet("""
                 QLabel {
-                    color: #64748b;
+                    color: #68776f;
                     font-size: 14px;
                 }
             """)
@@ -403,7 +411,7 @@ class SalesHistoryPage(QWidget):
         row.setFixedHeight(76)
         row.setStyleSheet("""
             QFrame#salesHistoryRow {
-                border-top: 1px solid #edf2f7;
+                border-top: 1px solid #edf2ef;
                 background-color: white;
                 border-radius: 0px;
             }
@@ -421,7 +429,7 @@ class SalesHistoryPage(QWidget):
         receipt_id = force_ltr(QLabel(row_data["receipt_number"]))
         receipt_id.setStyleSheet("""
             QLabel {
-                color: #0f172a;
+                color: #18251f;
                 font-size: 14px;
                 font-weight: 700;
                 background: transparent;
@@ -444,7 +452,7 @@ class SalesHistoryPage(QWidget):
         date = force_ltr(QLabel(format_date(row_data["date"], include_time=True)))
         date.setStyleSheet("""
             QLabel {
-                color: #475569;
+                color: #43534b;
                 font-size: 13px;
                 font-weight: 500;
                 background: transparent;
@@ -467,7 +475,7 @@ class SalesHistoryPage(QWidget):
         payment = QLabel(T(row_data["payment_method"]))
         payment.setStyleSheet("""
             QLabel {
-                color: #0f172a;
+                color: #18251f;
                 font-size: 13px;
                 font-weight: 700;
                 background: transparent;
@@ -484,7 +492,7 @@ class SalesHistoryPage(QWidget):
                 border-radius: 10px;
                 font-size: 12px;
                 font-weight: 700;
-                color: #0f172a;
+                color: #18251f;
                 padding: 0 12px;
             }
 
@@ -507,17 +515,17 @@ class SalesHistoryPage(QWidget):
         return_btn.clicked.connect(lambda: self.return_sale(row_data["id"]))
         return_btn.setStyleSheet("""
             QPushButton {
-                background-color: #eff6ff;
-                border: 1px solid #bfdbfe;
+                background-color: #e8f4ef;
+                border: 1px solid #c7dfd4;
                 border-radius: 10px;
                 font-size: 12px;
                 font-weight: 700;
-                color: #2563eb;
+                color: #147a61;
                 padding: 0 12px;
             }
 
             QPushButton:hover {
-                background-color: #dbeafe;
+                background-color: #d9eee5;
             }
         """)
 
@@ -532,7 +540,7 @@ class SalesHistoryPage(QWidget):
                 border-radius: 10px;
                 font-size: 12px;
                 font-weight: 700;
-                color: #dc2626;
+                color: #c84b4b;
                 padding: 0 12px;
             }
 
@@ -714,7 +722,7 @@ class SalesHistoryPage(QWidget):
                     font-family: Arial, sans-serif;
                     margin: 0;
                     padding: 24px;
-                    color: #111827;
+                    color: #18251f;
                     background: white;
                 }}
 
@@ -738,7 +746,7 @@ class SalesHistoryPage(QWidget):
                 .invoice-label {{
                     font-size: 28px;
                     font-weight: 800;
-                    color: #111827;
+                    color: #18251f;
                 }}
 
                 .brand-block {{
@@ -757,7 +765,7 @@ class SalesHistoryPage(QWidget):
                     margin: 0;
                     font-size: 34px;
                     font-weight: 800;
-                    color: #111827;
+                    color: #18251f;
                 }}
 
                 .brand-subtitle {{
@@ -781,7 +789,7 @@ class SalesHistoryPage(QWidget):
                 }}
 
                 .meta strong {{
-                    color: #111827;
+                    color: #18251f;
                 }}
 
                 table {{
@@ -807,7 +815,7 @@ class SalesHistoryPage(QWidget):
                     width: 320px;
                     margin-left: auto;
                     margin-top: 18px;
-                    border: 1px solid #111827;
+                    border: 1px solid #18251f;
                 }}
 
                 .total-row {{
@@ -816,7 +824,7 @@ class SalesHistoryPage(QWidget):
                     padding: 12px 16px;
                     font-size: 15px;
                     font-weight: 700;
-                    background: #111827;
+                    background: #18251f;
                     color: white;
                 }}
 

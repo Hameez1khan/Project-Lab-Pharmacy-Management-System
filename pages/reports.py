@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
 from database.reporting import report_data
 from i18n import T, TF, format_money, format_number
 from ui_theme import (
-    BLUE, BORDER, CANVAS, SURFACE, SURFACE_SOFT, TEXT, TEXT_MUTED,
+    BLUE, BORDER, CANVAS, PRIMARY, SURFACE, SURFACE_SOFT, TEXT, TEXT_MUTED,
     page_title_style, page_subtitle_style, primary_button_style, soft_button_style,
 )
 
@@ -52,7 +52,7 @@ class ReportsPage(QWidget):
         layout.addLayout(stats)
         for i, (label, color) in enumerate((
             ("Receipts", BLUE), ("Gross sales", TEXT),
-            ("Refunds", "#a84418"), ("Net sales", "#0f766e"),
+            ("Refunds", "#a84418"), ("Net sales", "#147a61"),
         )):
             card = QFrame()
             card.setObjectName("metric")
@@ -121,7 +121,7 @@ class ReportsPage(QWidget):
             QWidget#reportsPage {{background:{CANVAS};}}
             QFrame#metric,QTableWidget {{background:{SURFACE};border:1px solid {BORDER};border-radius:6px;}}
             QDateEdit,QComboBox {{background:white;color:{TEXT};border:1px solid {BORDER};padding:5px 9px;border-radius:5px;}}
-            QTableWidget {{alternate-background-color:{SURFACE_SOFT};selection-background-color:#dbeafe;selection-color:{TEXT};}}
+            QTableWidget {{alternate-background-color:{SURFACE_SOFT};selection-background-color:#d9eee5;selection-color:{TEXT};}}
             QTableWidget::item {{padding:0 8px;}}
             QHeaderView::section {{background:{SURFACE_SOFT};color:{TEXT_MUTED};padding:8px;border:0;border-bottom:1px solid {BORDER};font-weight:600;}}
         """)
@@ -132,7 +132,7 @@ class ReportsPage(QWidget):
     def button(self, text, icon, slot):
         b = QPushButton(T(text))
         b.setIcon(self.style().standardIcon(getattr(QStyle.StandardPixmap, icon)))
-        b.setStyleSheet(primary_button_style(BLUE, "#1d4ed8")
+        b.setStyleSheet(primary_button_style(PRIMARY, "#0f654f")
                        if text == "Export report" else soft_button_style())
         b.setMinimumHeight(34)
         b.clicked.connect(slot)

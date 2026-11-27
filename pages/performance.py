@@ -55,8 +55,8 @@ class PerformancePage(QWidget):
         self.metric_values = []
         cards = QGridLayout()
         for index, (caption, color) in enumerate((
-            ("Checkout attempts", BLUE), ("Success rate", "#0f766e"),
-            ("Median processing", "#7c3aed"), ("Processing P95", "#a84418"),
+            ("Checkout attempts", BLUE), ("Success rate", "#147a61"),
+            ("Median processing", "#7357a8"), ("Processing P95", "#a84418"),
         )):
             card = QFrame()
             card.setObjectName("metricCard")
@@ -102,7 +102,7 @@ class PerformancePage(QWidget):
             QComboBox {{background:white;color:{TEXT};border:1px solid {BORDER};
                         padding:5px 9px;border-radius:5px;}}
             QTableWidget {{background:{SURFACE};color:{TEXT};border:1px solid {BORDER};
-                           selection-background-color:#dbeafe;selection-color:{TEXT};}}
+                           selection-background-color:#d9eee5;selection-color:{TEXT};}}
             QTableWidget::item {{padding:0 8px;border-bottom:1px solid {BORDER};}}
             QHeaderView::section {{background:{SURFACE_SOFT};color:{TEXT_MUTED};padding:8px;
                                   border:0;border-bottom:1px solid {BORDER};font-weight:600;}}

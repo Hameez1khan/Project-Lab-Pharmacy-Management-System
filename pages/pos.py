@@ -19,7 +19,7 @@ from database.db import (
 from database.performance import CheckoutPerformance, measure_metric
 from i18n import T, TF, force_ltr, format_date, format_money, ltr_text
 
-BLUE = "#2563eb"
+BLUE = "#147a61"
 
 
 def build_receipt_summary(plan, total_amount, payment_method):
@@ -43,7 +43,7 @@ def soft_button_style():
     return """
         QPushButton {
             background-color: #f8fafc;
-            color: #111827;
+            color: #18251f;
             border: 1px solid #dbe4ee;
             border-radius: 8px;
             padding: 0 14px;
@@ -110,7 +110,7 @@ class BatchPickDialog(QDialog):
             QLabel {
                 font-size: 18px;
                 font-weight: 800;
-                color: #111827;
+                color: #18251f;
             }
         """)
         layout.addWidget(title)
@@ -134,7 +134,7 @@ class BatchPickDialog(QDialog):
                 QLabel {
                     font-size: 15px;
                     font-weight: 700;
-                    color: #111827;
+                    color: #18251f;
                 }
             """)
             card_layout.addWidget(name)
@@ -159,7 +159,7 @@ class BatchPickDialog(QDialog):
             QLabel {
                 font-size: 17px;
                 font-weight: 800;
-                color: #111827;
+                color: #18251f;
             }
         """)
         layout.addWidget(total)
@@ -178,7 +178,7 @@ class BatchPickDialog(QDialog):
 
         confirm_btn.setStyleSheet("""
             QPushButton {
-                background-color: #2563eb;
+                background-color: #147a61;
                 color: white;
                 border: none;
                 border-radius: 8px;
@@ -187,7 +187,7 @@ class BatchPickDialog(QDialog):
             }
 
             QPushButton:hover {
-                background-color: #1d4ed8;
+                background-color: #0f654f;
             }
         """)
 
@@ -215,7 +215,7 @@ class PaymentMethodDialog(QDialog):
             QLabel {
                 font-size: 18px;
                 font-weight: 800;
-                color: #111827;
+                color: #18251f;
             }
         """)
 
@@ -224,7 +224,7 @@ class PaymentMethodDialog(QDialog):
             QLabel {
                 font-size: 15px;
                 font-weight: 700;
-                color: #0f766e;
+                color: #147a61;
             }
         """)
 
@@ -239,7 +239,7 @@ class PaymentMethodDialog(QDialog):
                 border-radius: 8px;
                 padding: 0 12px;
                 font-size: 14px;
-                color: #111827;
+                color: #18251f;
             }
 
             QComboBox::drop-down {
@@ -263,7 +263,7 @@ class PaymentMethodDialog(QDialog):
 
         confirm_btn.setStyleSheet("""
             QPushButton {
-                background-color: #2563eb;
+                background-color: #147a61;
                 color: white;
                 border: none;
                 border-radius: 8px;
@@ -272,7 +272,7 @@ class PaymentMethodDialog(QDialog):
             }
 
             QPushButton:hover {
-                background-color: #1d4ed8;
+                background-color: #0f654f;
             }
         """)
 
@@ -308,7 +308,7 @@ class QuantityDialog(QDialog):
             QLabel {
                 font-size: 18px;
                 font-weight: 800;
-                color: #111827;
+                color: #18251f;
             }
         """)
 
@@ -326,10 +326,10 @@ class QuantityDialog(QDialog):
                 border-radius: 8px;
                 padding: 0 12px;
                 font-size: 14px;
-                color: #111827;
+                color: #18251f;
             }
             QSpinBox:focus {
-                border: 1px solid #2563eb;
+                border: 1px solid #147a61;
             }
         """)
         form.addRow(T("Quantity"), self.quantity_input)
@@ -348,7 +348,7 @@ class QuantityDialog(QDialog):
 
         confirm_btn.setStyleSheet("""
             QPushButton {
-                background-color: #2563eb;
+                background-color: #147a61;
                 color: white;
                 border: none;
                 border-radius: 8px;
@@ -357,7 +357,7 @@ class QuantityDialog(QDialog):
             }
 
             QPushButton:hover {
-                background-color: #1d4ed8;
+                background-color: #0f654f;
             }
         """)
 
@@ -394,7 +394,7 @@ class CustomerIdentityDialog(QDialog):
             QLabel {
                 font-size: 18px;
                 font-weight: 800;
-                color: #111827;
+                color: #18251f;
             }
         """)
 
@@ -430,11 +430,11 @@ class CustomerIdentityDialog(QDialog):
                 border-radius: 8px;
                 padding: 0 12px;
                 font-size: 14px;
-                color: #111827;
+                color: #18251f;
             }
 
             QLineEdit:focus {
-                border: 1px solid #2563eb;
+                border: 1px solid #147a61;
             }
         """
 
@@ -506,7 +506,7 @@ class POSPage(QWidget):
         title = QLabel(T("Point of Sale"))
         title.setStyleSheet("""
             QLabel {
-                color: #111827;
+                color: #18251f;
                 font-size: 23px;
                 font-weight: 800;
                 background: transparent;
@@ -547,12 +547,12 @@ class POSPage(QWidget):
                 border: 1px solid #e5e7eb;
                 border-radius: 8px;
                 padding: 0 14px;
-                color: #111827;
+                color: #18251f;
                 font-size: 14px;
             }
 
             QLineEdit:focus, QComboBox:focus {
-                border: 1px solid #2563eb;
+                border: 1px solid #147a61;
             }
 
             QLineEdit:disabled {
@@ -575,7 +575,7 @@ class POSPage(QWidget):
                 background-color: white;
                 border: 1px solid #e5e7eb;
                 selection-background-color: #eef5ff;
-                selection-color: #111827;
+                selection-color: #18251f;
                 outline: none;
                 padding: 4px;
             }
@@ -594,13 +594,13 @@ class POSPage(QWidget):
             }
 
             QComboBox QAbstractItemView QScrollBar::handle:vertical {
-                background: #cbd5e1;
+                background: #bfcbc5;
                 min-height: 40px;
                 border-radius: 4px;
             }
 
             QComboBox QAbstractItemView QScrollBar::handle:vertical:hover {
-                background: #94a3b8;
+                background: #96a89f;
             }
 
             QComboBox QAbstractItemView QScrollBar::add-line:vertical,
@@ -659,13 +659,13 @@ class POSPage(QWidget):
             }
 
             QScrollBar::handle:vertical {
-                background: #cbd5e1;
+                background: #bfcbc5;
                 min-height: 40px;
                 border-radius: 5px;
             }
 
             QScrollBar::handle:vertical:hover {
-                background: #94a3b8;
+                background: #96a89f;
             }
 
             QScrollBar::add-line:vertical,
@@ -688,13 +688,13 @@ class POSPage(QWidget):
             }
 
             QScrollBar::handle:horizontal {
-                background: #cbd5e1;
+                background: #bfcbc5;
                 min-width: 40px;
                 border-radius: 5px;
             }
 
             QScrollBar::handle:horizontal:hover {
-                background: #94a3b8;
+                background: #96a89f;
             }
 
             QScrollBar::add-line:horizontal,
@@ -760,7 +760,7 @@ class POSPage(QWidget):
         name = QLabel(product["name"])
         name.setStyleSheet("""
             QLabel {
-                color: #111827;
+                color: #18251f;
                 font-size: 16px;
                 font-weight: 800;
                 background: transparent;
@@ -783,7 +783,7 @@ class POSPage(QWidget):
             prescription_label = QLabel(T("Requires prescription"))
             prescription_label.setStyleSheet("""
                 QLabel {
-                    background-color: #fff7ed;
+                    background-color: #fff7e8;
                     color: #c2410c;
                     border: 1px solid #fdba74;
                     border-radius: 10px;
@@ -823,7 +823,7 @@ class POSPage(QWidget):
             new_price = force_ltr(QLabel(format_money(product["price"], 0)), right=True)
             new_price.setStyleSheet("""
                 QLabel {
-                    color: #dc2626;
+                    color: #c84b4b;
                     font-size: 15px;
                     font-weight: 800;
                     background: transparent;
@@ -835,7 +835,7 @@ class POSPage(QWidget):
             discount_badge.setStyleSheet("""
                 QLabel {
                     background-color: #fef2f2;
-                    color: #dc2626;
+                    color: #c84b4b;
                     border-radius: 10px;
                     padding: 3px 8px;
                     font-size: 11px;
@@ -851,7 +851,7 @@ class POSPage(QWidget):
             price = force_ltr(QLabel(format_money(product["price"], 0)), right=True)
             price.setStyleSheet("""
                 QLabel {
-                    color: #0f766e;
+                    color: #147a61;
                     font-size: 15px;
                     font-weight: 800;
                     background: transparent;
@@ -868,7 +868,7 @@ class POSPage(QWidget):
         add_btn.clicked.connect(lambda: self.add_to_cart(product))
         add_btn.setStyleSheet("""
             QPushButton {
-                background-color: #22c55e;
+                background-color: #147a61;
                 color: white;
                 border: none;
                 border-radius: 8px;
@@ -951,7 +951,7 @@ class POSPage(QWidget):
         title = QLabel(T("Cart"))
         title.setStyleSheet("""
             QLabel {
-                color: #111827;
+                color: #18251f;
                 font-size: 20px;
                 font-weight: 800;
                 background: transparent;
@@ -984,13 +984,13 @@ class POSPage(QWidget):
             }
 
             QScrollBar::handle:vertical {
-                background: #cbd5e1;
+                background: #bfcbc5;
                 min-height: 40px;
                 border-radius: 4px;
             }
 
             QScrollBar::handle:vertical:hover {
-                background: #94a3b8;
+                background: #96a89f;
             }
 
             QScrollBar::add-line:vertical,
@@ -1010,7 +1010,7 @@ class POSPage(QWidget):
         self.total_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.total_label.setStyleSheet("""
             QLabel {
-                color: #111827;
+                color: #18251f;
                 font-size: 18px;
                 font-weight: 800;
                 background: transparent;
@@ -1024,7 +1024,7 @@ class POSPage(QWidget):
         checkout_btn.clicked.connect(self.checkout)
         checkout_btn.setStyleSheet("""
             QPushButton {
-                background-color: #2563eb;
+                background-color: #147a61;
                 color: white;
                 border: none;
                 border-radius: 8px;
@@ -1033,7 +1033,7 @@ class POSPage(QWidget):
             }
 
             QPushButton:hover {
-                background-color: #1d4ed8;
+                background-color: #0f654f;
             }
         """)
 
@@ -1043,8 +1043,8 @@ class POSPage(QWidget):
         clear_btn.clicked.connect(self.empty_cart)
         clear_btn.setStyleSheet("""
             QPushButton {
-                background-color: #fff1f2;
-                color: #dc2626;
+                background-color: #fff0f0;
+                color: #c84b4b;
                 border: 1px solid #fecdd3;
                 border-radius: 8px;
                 font-size: 13px;

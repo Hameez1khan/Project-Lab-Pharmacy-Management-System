@@ -84,7 +84,7 @@ class SupplierDialog(QDialog):
         cancel = QPushButton(T("Cancel"))
         save = QPushButton(T("Save"))
         cancel.setStyleSheet(soft_button_style())
-        save.setStyleSheet(primary_button_style(BLUE, "#1d4ed8"))
+        save.setStyleSheet(primary_button_style(BLUE, "#0f654f"))
         for button in (cancel, save):
             button.setMinimumHeight(38)
             button.setMinimumWidth(100)
@@ -523,6 +523,7 @@ class PurchasingPage(QWidget):
         self.tabs.addTab(self.build_receive_tab(), T("Receive Stock"))
         self.tabs.addTab(self.build_history_tab(), T("Purchase History"))
         self.tabs.addTab(self.build_suppliers_tab(), T("Suppliers"))
+        self.tabs.currentChanged.connect(self.refresh_current_tab)
         layout.addWidget(self.tabs, 1)
 
         self.setStyleSheet(f"""
@@ -532,7 +533,7 @@ class PurchasingPage(QWidget):
             QTabBar::tab {{ background: {SURFACE_SOFT}; color: {TEXT_MUTED}; padding: 10px 18px;
                            border: 1px solid {BORDER}; border-bottom: none; min-width: 130px; }}
             QTabBar::tab:selected {{ background: {SURFACE}; color: {BLUE}; font-weight: 700; }}
-            QTableWidget {{ background: {SURFACE}; color: {TEXT}; border: 1px solid {BORDER}; selection-background-color: #dbeafe; }}
+            QTableWidget {{ background: {SURFACE}; color: {TEXT}; border: 1px solid {BORDER}; selection-background-color: #d9eee5; }}
             QTableWidget::item {{ padding: 0 8px; border-bottom: 1px solid {BORDER}; }}
             QHeaderView::section {{ background: {SURFACE_SOFT}; color: {TEXT_MUTED}; padding: 8px;
                                    border: 0; border-bottom: 1px solid {BORDER}; font-weight: 700; }}
@@ -659,7 +660,7 @@ class PurchasingPage(QWidget):
 
         item_toolbar = QHBoxLayout()
         item_title = QLabel(T("Received items"))
-        item_title.setStyleSheet("font-size:15px;font-weight:700;color:#111827")
+        item_title.setStyleSheet("font-size:15px;font-weight:700;color:#18251f")
         add_line = QPushButton(T("+ Add item"))
         add_line.setStyleSheet(soft_button_style())
         add_line.setMinimumHeight(36)
@@ -752,11 +753,19 @@ class PurchasingPage(QWidget):
     def refresh(self):
         self.products = get_purchase_products()
         self.refresh_suppliers()
-        self.refresh_orders()
-        self.refresh_reorders()
-        self.refresh_history()
-        if self.items_table.rowCount() == 0:
+        self.refresh_current_tab(self.tabs.currentIndex())
+
+    def refresh_current_tab(self, index):
+        if index == 0:
+            self.refresh_orders()
+        elif index == 1:
+            self.refresh_reorders()
+        elif index == 2 and self.items_table.rowCount() == 0:
             self.add_item_row()
+        elif index == 3:
+            self.refresh_history()
+        elif index == 4:
+            self.refresh_suppliers()
 
     def refresh_supplier_combo(self):
         selected = self.supplier_combo.currentData()
@@ -808,7 +817,7 @@ class PurchasingPage(QWidget):
             return
         rows = get_purchase_orders(
             self.order_search.text(), self.order_status_filter.currentData()
-        )
+        )[:100]
         self.orders_table.setRowCount(len(rows))
         for row_index, row in enumerate(rows):
             values = (
@@ -909,6 +918,7 @@ class PurchasingPage(QWidget):
         except Exception as error:
             QMessageBox.warning(self, T("Reorder Suggestions"), T(str(error)))
             return
+        rows = [row for row in rows if int(row["suggested_quantity"]) > 0][:100]
         self.reorder_rows = rows
         self.reorder_table.setRowCount(len(rows))
         for row_index, row in enumerate(rows):
@@ -1054,7 +1064,7 @@ class PurchasingPage(QWidget):
     def refresh_history(self, *_):
         if not hasattr(self, "history_table"):
             return
-        rows = get_purchase_history(self.history_search.text())
+        rows = get_purchase_history(self.history_search.text())[:100]
         self.history_table.setRowCount(len(rows))
         for row_index, row in enumerate(rows):
             values = (
