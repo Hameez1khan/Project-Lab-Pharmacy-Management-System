@@ -152,7 +152,7 @@ def generate(args):
     from database.db import get_connection, hash_password, initialize_database
     from database.inventory_audit import operator
 
-    operator.set(("Demo Generator", "system"))
+    operator.set(("Data Setup", "system"))
     initialize_database()
     rng = random.Random(args.seed)
     now = datetime.now().replace(second=0, microsecond=0)
@@ -163,7 +163,7 @@ def generate(args):
     try:
         conn.execute("DELETE FROM users")
         users = [
-            ("demo_admin", hash_password("DemoAdmin2026!"), "admin"),
+            ("admin", hash_password("1234"), "admin"),
             ("nora.pharmacist", hash_password("DemoPharma2026!"), "pharmacist"),
             ("adam.pharmacist", hash_password("DemoPharma2026!"), "pharmacist"),
             ("lina.pharmacist", hash_password("DemoPharma2026!"), "pharmacist"),
@@ -184,7 +184,7 @@ def generate(args):
                 VALUES(?,?,?,?,?,?,?)
             """, (
                 name, f"{FIRST_NAMES[index % len(FIRST_NAMES)]} {LAST_NAMES[index % len(LAST_NAMES)]}",
-                f"+36 30 555 {index:04d}", f"orders{index}@demo-pharmacy.example",
+                f"+36 30 555 {index:04d}", f"orders{index}@khalisdawa.example",
                 f"{10 + index} Distribution Park, Budapest", dt_text(history_start), rng.randint(2, 14),
             ))
 
@@ -207,7 +207,7 @@ def generate(args):
                 INSERT INTO purchase_orders(order_number,supplier_id,order_date,expected_date,status,notes,created_by,created_at,updated_at)
                 VALUES(?,?,?,?,?,?,?,?,?)
             """, (order_number, supplier_id, order_date.date().isoformat(), expected.date().isoformat(), status,
-                  "Routine replenishment order", "demo_admin", dt_text(order_date), dt_text(order_date)))
+                  "Routine replenishment order", "admin", dt_text(order_date), dt_text(order_date)))
             order_id = cur.lastrowid
             for product in rng.sample(product_rows, 8):
                 ordered = rng.randrange(40, 181, 10)
@@ -246,7 +246,7 @@ def generate(args):
                 INSERT INTO purchase_receipts(supplier_id,reference_number,received_date,notes,received_by,created_at,purchase_order_id)
                 VALUES(?,?,?,?,?,?,NULL)
             """, (supplier_id, f"DN-{received:%Y%m}-{receipt_index:05d}", received.date().isoformat(),
-                  "Supplier delivery", "demo_admin", dt_text(received)))
+                  "Supplier delivery", "admin", dt_text(received)))
             for spec in group:
                 batch = conn.execute("""
                     INSERT INTO batches(product_id,batch_number,expiry_date,quantity,purchase_unit_cost,total_purchase_cost,discount_percent,discount_applied_date)
@@ -378,13 +378,13 @@ def generate(args):
         # Coherent synthetic audit trail, always marked as demonstration data.
         audit_events = []
         for product in product_rows:
-            audit_events.append(("demo_admin", "admin", f"Registered medicine {product['name']}", dt_text(history_start)))
+            audit_events.append(("admin", "admin", f"Registered medicine {product['name']}", dt_text(history_start)))
         for sale_id, sale_datetime in conn.execute("SELECT id,sale_datetime FROM sales"):
             audit_events.append((rng.choice(usernames[1:]), "pharmacist", f"Completed sale KD-{sale_datetime[:10].replace('-', '')}-{sale_id:05d}", sale_datetime))
         for return_id, returned_at in conn.execute("SELECT id,return_datetime FROM returns"):
             audit_events.append((rng.choice(usernames[1:]), "pharmacist", f"Processed return RT-{returned_at[:10].replace('-', '')}-{return_id:05d}", returned_at))
         for order_number, created_at in conn.execute("SELECT order_number,created_at FROM purchase_orders"):
-            audit_events.append(("demo_admin", "admin", f"Created purchase order {order_number}", created_at))
+            audit_events.append(("admin", "admin", f"Created purchase order {order_number}", created_at))
         action_templates = (
             "Reviewed low-stock recommendations", "Reviewed expiry alerts", "Exported daily sales report",
             "Verified inventory count", "Reviewed supplier delivery history", "Created database backup",
