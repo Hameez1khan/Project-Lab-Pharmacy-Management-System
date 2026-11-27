@@ -7,6 +7,11 @@ from database.db import (
     create_sale,
     get_connection,
     get_dashboard_sales_trend,
+    get_batch_row_count,
+    get_batch_rows,
+    get_product_row_count,
+    get_product_rows,
+    get_products_for_pos,
     is_password_hash,
     process_sale_return,
     register_pharmacist,
@@ -16,6 +21,16 @@ from tests.backend.base import DatabaseTestCase
 
 
 class DatabaseBehaviorTests(DatabaseTestCase):
+    def test_empty_category_value_means_all_categories(self):
+        product = self.add_product("Visible Medicine")
+        self.add_batch(product, "VISIBLE-001", 12)
+
+        self.assertEqual(get_product_row_count("", ""), 1)
+        self.assertEqual(len(get_product_rows("", "", 25, 0)), 1)
+        self.assertEqual(get_batch_row_count("", ""), 1)
+        self.assertEqual(len(get_batch_rows("", "", 25, 0)), 1)
+        self.assertEqual(len(get_products_for_pos("", "")), 1)
+
     def test_connection_enforces_foreign_keys(self):
         with closing(get_connection()) as conn:
             self.assertEqual(conn.execute("PRAGMA foreign_keys").fetchone()[0], 1)

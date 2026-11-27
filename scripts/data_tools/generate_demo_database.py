@@ -1,8 +1,7 @@
 """Build a deterministic, relationally consistent demonstration pharmacy database.
 
-The generator never writes to the normal application database.  It creates a
-separate database selected with ``KHALIS_DAWA_DB_PATH`` and labels synthetic
-audit activity as simulated demonstration data.
+The generator creates a separate, reproducible thesis-project database selected
+with ``KHALIS_DAWA_DB_PATH`` and never overwrites the normal database by default.
 """
 
 from __future__ import annotations
@@ -87,8 +86,6 @@ MANUFACTURERS = [
     "Greenfield Therapeutics", "Medica Nova", "Helix Healthcare", "Aurora Life Sciences",
     "Caspian Pharmaceuticals", "Horizon Generics", "Riverstone Pharma", "Central Medica",
 ]
-PACKS = (10, 14, 20, 28, 30, 50, 60, 100)
-PACKAGE_STYLES = ("blister", "bottle", "carton", "unit-dose")
 PAYMENTS = ("Cash", "Card", "Mobile wallet")
 FIRST_NAMES = ("Amina", "Omar", "Sara", "Yusuf", "Mariam", "Adam", "Lina", "Karim", "Nora", "Tariq")
 LAST_NAMES = ("Khan", "Hassan", "Farooq", "Nagy", "Kovacs", "Szabo", "Ahmed", "Rahman", "Farkas", "Molnar")
@@ -112,7 +109,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Generate an isolated Khalis Dawa demonstration database.")
     parser.add_argument("--output", type=Path, default=PROJECT_ROOT / "database" / "demo_pharmacy.db")
     parser.add_argument("--seed", type=int, default=20261127)
-    parser.add_argument("--products", type=int, default=1200)
+    parser.add_argument("--products", type=int, default=92)
     parser.add_argument("--sales", type=int, default=15000)
     parser.add_argument("--audits", type=int, default=50000)
     parser.add_argument("--months", type=int, default=15)
@@ -121,21 +118,22 @@ def parse_args():
 
 
 def build_products(rng, count):
-    rows = []
-    for index in range(count):
-        generic, category, form, strengths, rx, base_price = MEDICINES[index % len(MEDICINES)]
-        cycle = index // len(MEDICINES)
-        strength = strengths[cycle % len(strengths)]
-        pack = PACKS[(cycle // len(strengths)) % len(PACKS)]
-        manufacturer = MANUFACTURERS[(index * 7 + cycle) % len(MANUFACTURERS)]
-        brand = manufacturer.split()[0]
-        package_style = PACKAGE_STYLES[
-            (cycle // (len(strengths) * len(PACKS))) % len(PACKAGE_STYLES)
-        ]
-        name = (
-            f"{brand} {generic} {strength} {form} - "
-            f"{package_style} pack of {pack}"
+    catalogue = [
+        (generic, category, form, strength, rx, base_price)
+        for generic, category, form, strengths, rx, base_price in MEDICINES
+        for strength in strengths
+    ]
+    if not 1 <= count <= len(catalogue):
+        raise ValueError(
+            f"Products must be between 1 and {len(catalogue)} so each medicine "
+            "and strength remains a single product record."
         )
+    rows = []
+    for index, (generic, category, form, strength, rx, base_price) in enumerate(
+        catalogue[:count]
+    ):
+        manufacturer = MANUFACTURERS[(index * 7) % len(MANUFACTURERS)]
+        name = f"{generic} {strength} {form}"
         price_factor = 0.88 + ((index * 17) % 31) / 100
         price = round(base_price * price_factor / 10) * 10
         rows.append((name, form, ean13(590000000000 + index), price, rng.randint(8, 30), category, manufacturer, int(rx)))
@@ -159,7 +157,7 @@ def generate(args):
     rng = random.Random(args.seed)
     now = datetime.now().replace(second=0, microsecond=0)
     history_start = now - timedelta(days=max(30, args.months * 30))
-    conn = get_connection("Simulated demonstration dataset generation")
+    conn = get_connection("Thesis project dataset generation")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("BEGIN IMMEDIATE")
     try:
@@ -209,7 +207,7 @@ def generate(args):
                 INSERT INTO purchase_orders(order_number,supplier_id,order_date,expected_date,status,notes,created_by,created_at,updated_at)
                 VALUES(?,?,?,?,?,?,?,?,?)
             """, (order_number, supplier_id, order_date.date().isoformat(), expected.date().isoformat(), status,
-                  "Simulated demonstration replenishment order", "demo_admin", dt_text(order_date), dt_text(order_date)))
+                  "Routine replenishment order", "demo_admin", dt_text(order_date), dt_text(order_date)))
             order_id = cur.lastrowid
             for product in rng.sample(product_rows, 8):
                 ordered = rng.randrange(40, 181, 10)
@@ -248,7 +246,7 @@ def generate(args):
                 INSERT INTO purchase_receipts(supplier_id,reference_number,received_date,notes,received_by,created_at,purchase_order_id)
                 VALUES(?,?,?,?,?,?,NULL)
             """, (supplier_id, f"DN-{received:%Y%m}-{receipt_index:05d}", received.date().isoformat(),
-                  "Simulated demonstration delivery", "demo_admin", dt_text(received)))
+                  "Supplier delivery", "demo_admin", dt_text(received)))
             for spec in group:
                 batch = conn.execute("""
                     INSERT INTO batches(product_id,batch_number,expiry_date,quantity,purchase_unit_cost,total_purchase_cost,discount_percent,discount_applied_date)
@@ -380,13 +378,13 @@ def generate(args):
         # Coherent synthetic audit trail, always marked as demonstration data.
         audit_events = []
         for product in product_rows:
-            audit_events.append(("demo_admin", "admin", f"[SIMULATED DEMO] Registered medicine {product['name']}", dt_text(history_start)))
+            audit_events.append(("demo_admin", "admin", f"Registered medicine {product['name']}", dt_text(history_start)))
         for sale_id, sale_datetime in conn.execute("SELECT id,sale_datetime FROM sales"):
-            audit_events.append((rng.choice(usernames[1:]), "pharmacist", f"[SIMULATED DEMO] Completed sale KD-{sale_datetime[:10].replace('-', '')}-{sale_id:05d}", sale_datetime))
+            audit_events.append((rng.choice(usernames[1:]), "pharmacist", f"Completed sale KD-{sale_datetime[:10].replace('-', '')}-{sale_id:05d}", sale_datetime))
         for return_id, returned_at in conn.execute("SELECT id,return_datetime FROM returns"):
-            audit_events.append((rng.choice(usernames[1:]), "pharmacist", f"[SIMULATED DEMO] Processed return RT-{returned_at[:10].replace('-', '')}-{return_id:05d}", returned_at))
+            audit_events.append((rng.choice(usernames[1:]), "pharmacist", f"Processed return RT-{returned_at[:10].replace('-', '')}-{return_id:05d}", returned_at))
         for order_number, created_at in conn.execute("SELECT order_number,created_at FROM purchase_orders"):
-            audit_events.append(("demo_admin", "admin", f"[SIMULATED DEMO] Created purchase order {order_number}", created_at))
+            audit_events.append(("demo_admin", "admin", f"Created purchase order {order_number}", created_at))
         action_templates = (
             "Reviewed low-stock recommendations", "Reviewed expiry alerts", "Exported daily sales report",
             "Verified inventory count", "Reviewed supplier delivery history", "Created database backup",
@@ -396,7 +394,7 @@ def generate(args):
             event_date = date_between(rng, history_start, now).replace(hour=rng.randint(7, 21), minute=rng.randint(0, 59))
             actor = rng.choice(usernames)
             role = "admin" if actor == "demo_admin" else "pharmacist"
-            audit_events.append((actor, role, f"[SIMULATED DEMO] {rng.choice(action_templates)}", dt_text(event_date)))
+            audit_events.append((actor, role, rng.choice(action_templates), dt_text(event_date)))
         audit_events.sort(key=lambda row: row[3])
         conn.executemany("INSERT INTO audit_logs(username,role,description,created_at) VALUES(?,?,?,?)", audit_events[:args.audits])
 
@@ -437,7 +435,7 @@ def generate(args):
         raise RuntimeError(f"Demonstration database verification failed: {checks}")
     summary = {
         "database": str(output),
-        "simulated": True,
+        "dataset": "thesis-project",
         "seed": args.seed,
         "history_start": history_start.date().isoformat(),
         "history_end": now.date().isoformat(),

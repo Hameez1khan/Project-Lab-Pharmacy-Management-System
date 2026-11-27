@@ -1707,7 +1707,7 @@ def get_product_rows(search_text="", category="All Categories", limit=None, offs
         FROM products p
         LEFT JOIN batches b ON b.product_id = p.id
         WHERE LOWER(p.name) LIKE ?
-          AND (? = 'All Categories' OR p.category = ?)
+          AND (? IN ('', 'All Categories') OR p.category = ?)
         GROUP BY
             p.id,
             p.name,
@@ -1750,7 +1750,7 @@ def get_product_row_count(search_text="", category="All Categories"):
     search_value = f"%{search_text.strip().lower()}%"
     total = conn.execute("""
         SELECT COUNT(*) AS total FROM products p
-        WHERE LOWER(p.name) LIKE ? AND (? = 'All Categories' OR p.category = ?)
+        WHERE LOWER(p.name) LIKE ? AND (? IN ('', 'All Categories') OR p.category = ?)
     """, (search_value, category, category)).fetchone()["total"]
     conn.close()
     return int(total)
@@ -1971,7 +1971,7 @@ def get_products_for_pos(search_text="", category="All Categories"):
             LOWER(p.name) LIKE ?
             OR COALESCE(p.barcode, '') LIKE ?
         )
-          AND (? = 'All Categories' OR p.category = ?)
+          AND (? IN ('', 'All Categories') OR p.category = ?)
         GROUP BY p.id, p.name, p.category, p.selling_price, p.prescription_required
         ORDER BY p.name ASC
     """, (search_value, search_value, category, category))
@@ -2594,7 +2594,7 @@ def get_batch_rows(search_text="", category="All Categories", limit=None, offset
         FROM batches b
         JOIN products p ON p.id = b.product_id
         WHERE LOWER(p.name) LIKE ?
-          AND (? = 'All Categories' OR p.category = ?)
+          AND (? IN ('', 'All Categories') OR p.category = ?)
         ORDER BY LOWER(p.name), date(b.expiry_date), b.batch_number
     """
     params = [search_value, category, category]
@@ -2628,7 +2628,7 @@ def get_batch_row_count(search_text="", category="All Categories"):
     search_value = f"%{search_text.strip().lower()}%"
     total = conn.execute("""
         SELECT COUNT(*) AS total FROM batches b JOIN products p ON p.id=b.product_id
-        WHERE LOWER(p.name) LIKE ? AND (? = 'All Categories' OR p.category = ?)
+        WHERE LOWER(p.name) LIKE ? AND (? IN ('', 'All Categories') OR p.category = ?)
     """, (search_value, category, category)).fetchone()["total"]
     conn.close()
     return int(total)
